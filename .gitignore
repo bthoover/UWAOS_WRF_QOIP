@@ -2,3 +2,5 @@
 code_repository/
 # excluding data_repository as well because files are large and stored offline
 data_repository/
+# exclude NOTE.txt for containing sensitive info
+NOTE.txt
