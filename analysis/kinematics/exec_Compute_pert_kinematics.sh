@@ -1,0 +1,15 @@
+#! /bin/sh
+
+source activate UWAOS_WRF_QOIP
+
+INP_FILE=${1}
+PTD_FILE=${2}
+PERT_OUTPUT_FILE=${3}
+PYTHON_PROG=${4}
+
+python3 ${PYTHON_PROG} << EOF
+${INP_FILE}
+${PTD_FILE}
+${PERT_OUTPUT_FILE}
+EOF
+
