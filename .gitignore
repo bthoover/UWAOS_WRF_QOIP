@@ -4,3 +4,5 @@ code_repository/
 data_repository/
 # exclude NOTE.txt for containing sensitive info
 NOTE.txt
+# exclude figures
+*.png

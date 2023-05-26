@@ -1,6 +1,6 @@
 #! /bin/sh
 
-source activate qpe-firerisk
+source activate UWAOS_WRF_QOIP
 
 ADJ_FILE=${1}
 INP_FILE=${2}

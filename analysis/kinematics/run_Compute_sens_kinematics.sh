@@ -1,9 +1,10 @@
 #! /bin/sh -f
 
-data_dir=/Volumes/R10N_STORE/SSEC_SAVE/WRF_QOIP/case_archives/march2020/R_mu/negative/uvTq
+data_dir=/home/bhoover/UWAOS/WRF_QOIP/data_repository/case_archives/nov2019/R_mu/positive/uvTq
 
 
-for iter in 00 01 02 03 04 05 06 07 08 09 10 11 12 13
+#for iter in 00
+for iter in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22
 do
 
 adj_file=${data_dir}/gradient_wrfplus_d01_unpi${iter}
