@@ -6,3 +6,6 @@ data_repository/
 NOTE.txt
 # exclude figures
 *.png
+# exclude jupyter notebook checkpoints and cache
+*.ipynb_checkpoints/
+__pycache__/
