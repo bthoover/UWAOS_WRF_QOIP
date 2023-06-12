@@ -162,6 +162,7 @@ def gen_cartopy_proj(wrfHDL):
                                      central_latitude=wrfHDL.CEN_LAT,
                                      standard_parallels=(wrfHDL.TRUELAT1,wrfHDL.TRUELAT2),
                                      globe=ccrs.Globe(
+                                                      ellipse='sphere',
                                                       semimajor_axis=6370000.,
                                                       semiminor_axis=6370000.
                                                      )
