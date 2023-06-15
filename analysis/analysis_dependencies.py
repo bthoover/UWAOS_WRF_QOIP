@@ -1,3 +1,46 @@
+# dim_coord_swap: assign dimension names and coordinate values from one xarray.Dataset() variable
+#                 to another xarray.Dataset() variable
+#
+# INPUTS:
+#
+# recDat: xarray.Dataset() object receiving dimension names and coordinates from donor
+# donDat: xarray.Dataset() object donating dimension names and coordinates to receiver
+#
+# OUTPUTS:
+#
+# recDat input xarray.Dataset(), with dimension names and coordinate values from donDat
+#
+# DEPENDENCIES:
+#
+# wrf-python
+# xarray (implicit, also dependency of wrf-python)
+#
+# NOTE: This function presumes recDat and donDat *should* have identical dimension names
+#       and coordinate values. If the number of dimensions does not match, will error and
+#       return without swapping dimensions/coordinates
+def dim_coord_swap(recDat,donDat):
+    import wrf
+    # check if number of dimensions of recDat and donDat match
+    # this is the only sanity check applied, if it passes we are
+    # assuming that the dimension names should be identical AND
+    # both datasets should have the same coordinate values
+    if len(recDat.dims) == len(donDat.dims):
+        # create dictionary for swapping recDat dimensions with
+        # donDat dimensions
+        dimDict = {}
+        for i in range(len(recDat.dims)):
+            dimDict[recDat.dims[i]] = donDat.dims[i]
+        # swap dimensions
+        recDat=recDat.rename(dimDict)
+        # swap coordinates
+        recDat=recDat.assign_coords(donDat.coords)
+        return recDat
+    else:
+        print('number of receiever dimensions ({:d})'.format(len(recDat.dims)) +
+              ' does not match number of donor dimensions ({:d})'.format(len(donDat.dims)))
+        print('no dimension/coordinate swapping applied')
+        return recDat
+
 # get_wrf_slp: given the netCDF4 Dataset() handle for a WRF file, produces the sea-level pressure
 #
 # INPUTS:
@@ -13,6 +56,11 @@
 # numpy
 # netCDF4.Dataset()
 # wrf(-python)
+# analysis_dependiencies.dim_coord_swap()
+#
+# NOTE: Draws slp from wrf.getvar() only to provide a donor-variable for dim_coord_swap()
+#       to provide appropriate dimensions
+# and coordinates 
 def get_wrf_slp(wrfHdl):
     import numpy as np
     from netCDF4 import Dataset
@@ -44,6 +92,11 @@ def get_wrf_slp(wrfHdl):
     T = Tp * np.power(P / baseP, kappa)
     # Derive slp from input (Z,T,P,qVap)
     slp = wrf.slp(Z, T, P, qVap)  # hPa
+    # Draw (incorrect) slp from wrf.getvar(), which has appropriate dimension names and
+    # coordinates
+    dimCoordDonor = wrf.getvar(wrfHdl,'slp')
+    # Swap dimension names and coordinates from dimCoordDonor
+    slp = dim_coord_swap(slp,dimCoordDonor)
     # Return slp
     return slp
 
@@ -63,6 +116,7 @@ def get_wrf_slp(wrfHdl):
 # numpy
 # netCDF4.Dataset()
 # wrf(-python)
+# analysis_dependencies.dim_coord_swap()
 def get_wrf_rh(wrfHdl):
     import numpy as np
     from netCDF4 import Dataset
@@ -92,6 +146,10 @@ def get_wrf_rh(wrfHdl):
     T = Tp * np.power(P / baseP, kappa)
     # Derive rh from input (qVap,P,T)
     rh = wrf.rh(qVap, P, T)  # (%)
+    # Swap dimension names and coordinates from wrf.getvar(wrfHdl,'p'), which has
+    # same dimension and coordinates that rh should have
+    dimCoordDonor = wrf.getvar(wrfHdl,'p')
+    rh = dim_coord_swap(rh,dimCoordDonor)
     # Return rh
     return rh
 # gen_wrf_proj: generate a wrf.WrfProj() object from metadata contained in a WRF file
