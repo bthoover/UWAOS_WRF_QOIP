@@ -230,4 +230,85 @@ def gen_cartopy_proj(wrfHDL):
         print('.MAP_PROJ={:d}'.format(wrfHDL.MAP_PROJ))
         print('.MAP_PROJ_CHAR=' + wrfHDL.MAP_PROJ_CHAR)
         return None
+# get_xsect: return a cross-section between a chosen starting/ending latitude/longitude for
+#            a provided xarray.DataArray() variable, and lists of the latitude/longigude
+#            points along the cross-section. Presumes pressure-based vertical coordinate.
+#
+# INPUTS:
+#
+# wrfHDL: netCDF4.Dataset() file handle for WRF file
+# var3D:  3D xarray.DataArray() of variable for cross-section, presumed to have the
+#         same dimensions and coordinates as pressure. Will swap dimensions/coordinates
+#         to pressure dimensions/coordinates automatically
+# latBeg: beginning latitude of cross-section (deg)
+# lonBeg: beginning longitude of cross-section (deg)
+# latEnd: ending latitude of cross-section (deg)
+# lonEnd: ending longitude of cross-section (deg)
+#
+# OUTPUTS:
+#
+# xSect: 2D cross-section of var3D from (latBeg,lonBeg) to (latEnd,lonEnd)
+# latList: list of latitudes at each cross-section point
+# lonList: list of longitudes at each cross-section point
+#
+# DEPENDENCIES:
+#
+# wrf-python
+# numpy
+# xarray (implicit, also a dependency of wrf-python)
+# analysis_dependencies.gen_wrf_proj()
+# analysis_dependencies.dim_coord_swap()
+def get_xsect(wrfHDL, var3D, latBeg, lonBeg, latEnd, lonEnd):
+    import wrf
+    import numpy as np
+    # draw pressure from wrf.getvar() for comparison of dimensions/coordinates
+    p = wrf.getvar(wrfHDL,'p')
+    # assert dimCoordEqual as True
+    dimCoordEqual = True
+    # check dimension names: if names are not equivalent, set dimCoordEqual to
+    # False
+    if p.dims != var3D.dims: dimCoordEqual = False
+    # check coordinate names: if names are not equivalent, set dimCoordEqual to
+    # False, else check equivalence of each coordinate's values
+    # NOTE: coordinates may be equivalent but in a different order, so we can't
+    #       just do a straightforward equivalence test, we have to make sure
+    #       all coordinate names exist in both lists regardless of order, so
+    #       list of keys is sorted() first.
+    if sorted(list(p.coords.keys())) == sorted(list(var3D.coords.keys())):
+        for coord in sorted(list(var3D.coords.keys())):
+            if not p.coords[coord].identical(var3D.coords[coord]): dimCoordEqual = False
+    else:
+        dimCoordEqual = False
+    # if dimCoordEqual is False, perform dim_coord_swap() to borrow dimensions
+    # and coordinates from pressure
+    if not dimCoordEqual:
+        var3D = dim_coord_swap(var3D,p)
+    # define inputs to cross-section
+    plevs = np.arange(10000., 102000.1, 5000.)  # levels
+    stag = 'm'  # stagger
+    proj = gen_wrf_proj(wrfHDL)  # projection
+    ptBeg = wrf.CoordPair(lat=latBeg, lon=lonBeg)  # start_point
+    ptEnd = wrf.CoordPair(lat=latEnd, lon=lonEnd)  # end_point
+    # generate cross-section with lat/lon points
+    xSect = wrf.vertcross(
+                          field3d     = var3D,
+                          vert        = p,
+                          levels      = plevs,
+                          missing     = np.nan,
+                          wrfin       = wrfHDL,
+                          stagger     = stag,
+                          projection  = proj,
+                          start_point = ptBeg,
+                          end_point   = ptEnd,
+                          latlon = True)
+    # extract latitude and longitude along cross-section from
+    # xSect.xy_loc strings
+    latList=[]
+    lonList=[]
+    for point in xSect.xy_loc.values:
+        pointLatLonStr = point.latlon_str().split(', ')
+        latList.append(float(pointLatLonStr[0]))
+        lonList.append(float(pointLatLonStr[1]))
+    # return xSect, latList, lonList
+    return xSect, latList, lonList
 
