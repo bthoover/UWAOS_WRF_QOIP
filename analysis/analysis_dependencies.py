@@ -152,6 +152,79 @@ def get_wrf_rh(wrfHdl):
     rh = dim_coord_swap(rh,dimCoordDonor)
     # Return rh
     return rh
+
+
+# compute_static_stability: compute static stability as per: 
+#                           https://www.ncl.ucar.edu/Document/Functions/Contributed/static_stability.shtml
+#                           see reference:
+#                           Bluestein, H.B. (1992): Synoptic-Dynamic Meteorology in Midlatitudes
+#                                                   Volume 1: Principles of Kinematics and Dynamics
+#                           equation:
+#                           s = -T*d[log(theta)]/dp = -(T/theta)*d(theta)/dp
+#
+# INPUTS:
+#
+# wrfHDL: netCDF4.Dataset() file handle for WRF file
+#
+# OUTPUTS:
+#
+# s: 3D static stability (NaN on upper and lower bounds)
+#
+# DEPENDENCIES:
+#
+# numpy
+# xarray
+# wrf-python
+# analysis_dependencies.dim_coord_swap()
+#
+# NOTES:
+#
+# Presumes 3D variables are in (nz,ny,nx) dimension format with dimension names as
+# file handle attributes of (bottom_top, south_north, west_east)
+def compute_static_stability(wrfHDL):
+    import numpy as np
+    import xarray as xr
+    import wrf
+    # Define dimension sizes (presumed dimension names)
+    nz = wrfHDL.dimensions['bottom_top'].size
+    ny = wrfHDL.dimensions['south_north'].size
+    nx = wrfHDL.dimensions['west_east'].size
+    # Define static stability as np.nan array
+    statStab = np.nan * np.ones((nz,ny,nx))
+    # Define base-state pot. temperature as 300 K
+    # NOTE: This is different from the 'T00' variable in the WRF file, which is specific
+    #       to an internal parameter used for a hypothetical WRF profile. See dev notes
+    #       under 'derived variables for wrf-python'/'Computing temperature correctly'
+    #       for details
+    baseTp = 300.  # (K)
+    # Define other constants
+    R = 287.053  # dry gas constant (J/K*kg)
+    cp = 1005.  # heat capacity of air at constant pressure (J/K*kg)
+    kappa = R/cp  # (dimensionless)
+    # Extract dynamic potential temperature from wrfHDL and compute total potential
+    # temperature as dynTp + baseTp
+    Tp = np.asarray(wrfHDL.variables['T']).squeeze() + baseTp
+    # Extract full pressure and base pressure (Pa)
+    P = np.asarray(wrf.getvar(wrfHDL,'p')).squeeze()
+    baseP = np.asarray(wrfHDL.variables['P00']).squeeze()
+    # Compute temperature (K)
+    T = Tp * np.power(P / baseP, kappa)
+    # Loop through vertical levels
+    for k in range(1, nz-1):
+        # Compute vertical gradient d(Tp)/dP on level k
+        dTp_dP = np.divide(Tp[k+1,:,:].squeeze() - Tp[k-1,:,:].squeeze(),
+                           P[k+1,:,:].squeeze() - P[k-1,:,:].squeeze())
+        # Compute static stability on level k
+        statStab[k,:,:] = np.multiply(np.divide(-T[k,:,:].squeeze(), Tp[k,:,:].squeeze()),
+                                      dTp_dP)
+    # Assert statStab as xarray.DataArray() object
+    statStab = xr.DataArray(statStab)
+    # Perform dimension/coordinate swap with pressure, which has appropriate dim/coord values
+    statStab = dim_coord_swap(statStab,wrf.getvar(wrfHDL,'p'))
+    # Return statStab
+    return statStab
+
+
 # gen_wrf_proj: generate a wrf.WrfProj() object from metadata contained in a WRF file
 #
 # INPUTS:
