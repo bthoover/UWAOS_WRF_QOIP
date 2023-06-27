@@ -153,14 +153,125 @@ def get_wrf_rh(wrfHdl):
     # Return rh
     return rh
 
+# get_wrf_tk: given the netCDF4 Dataset() handle for a WRF file, produces the temperature (K)
+#
+# INPUTS:
+#
+# wrfHdl: WRF file netCDF4.Dataset() handle
+#
+# OUTPUTS:
+#
+# tk: temperature in (nz,ny,nx) dimension (K)
+#
+# DEPENDENCIES:
+#
+# numpy
+# xarray
+# netCDF4.Dataset()
+# wrf(-python)
+# analysis_dependencies.dim_coord_swap()
+def get_wrf_tk(wrfHdl):
+    import numpy as np
+    import xarray as xr
+    from netCDF4 import Dataset
+    import wrf
+    # Define base-state pot. temperature as 300 K
+    # NOTE: This is different from the 'T00' variable in the WRF file, which is specific
+    #       to an internal parameter used for a hypothetical WRF profile. See dev notes
+    #       under 'derived variables for wrf-python'/'Computing temperature correctly'
+    #       for details
+    baseTp = 300.  # (K)
+    # Define other constants
+    R = 287.053  # dry gas constant (J/K*kg)
+    cp = 1005.  # heat capacity of air at constant pressure (J/K*kg)
+    kappa = R/cp  # (dimensionless)
+    # Draw necessary fields to produce slp:
+    #  dynaTp: 'dynamic', or perturbation pot. temperature added to baseTp to derive full Tp (K)
+    #  P: total pressure (baseP + dynaP) (Pa)
+    #  baseP: base-state pressure - this is directly from 'P00' stored in WRF file (Pa)
+    #  qVap: water vapor mixing ratio (kg/kg)
+    dynaTp = np.asarray(wrfHdl.variables['T']).squeeze()
+    P = np.asarray(wrf.getvar(wrfHdl,'p')).squeeze()
+    baseP = np.asarray(wrfHdl.variables['P00']).squeeze()
+    qVap = np.asarray(wrfHdl.variables['QVAPOR']).squeeze()
+    # Compute Tp (K)
+    Tp = dynaTp + baseTp
+    # Compute temperature T (K)
+    tk = Tp * np.power(P / baseP, kappa)
+    # Assert tk as xarray.DataArray() object
+    tk = xr.DataArray(tk)
+    # Swap dimension names and coordinates from wrf.getvar(wrfHdl,'p'), which has
+    # same dimension and coordinates that tk should have
+    dimCoordDonor = wrf.getvar(wrfHdl,'p')
+    tk = dim_coord_swap(tk,dimCoordDonor)
+    # Return tk
+    return tk
 
-# compute_static_stability: compute static stability as per: 
-#                           https://www.ncl.ucar.edu/Document/Functions/Contributed/static_stability.shtml
-#                           see reference:
-#                           Bluestein, H.B. (1992): Synoptic-Dynamic Meteorology in Midlatitudes
-#                                                   Volume 1: Principles of Kinematics and Dynamics
-#                           equation:
-#                           s = -T*d[log(theta)]/dp = -(T/theta)*d(theta)/dp
+# get_wrf_th: given the netCDF4 Dataset() handle for a WRF file, produces the potential
+# temperature (K)
+#
+# INPUTS:
+#
+# wrfHdl: WRF file netCDF4.Dataset() handle
+#
+# OUTPUTS:
+#
+# th: potential temperature in (nz,ny,nx) dimension (K)
+#
+# DEPENDENCIES:
+#
+# numpy
+# xarray
+# netCDF4.Dataset()
+# wrf(-python)
+# analysis_dependencies.dim_coord_swap()
+#
+# NOTE: This function may not be necessary, since wrf-python's wrf.getvar() seems
+#       to produce a reasonable potential temperature field
+def get_wrf_th(wrfHdl):
+    import numpy as np
+    import xarray as xr
+    from netCDF4 import Dataset
+    import wrf
+    # Define base-state pot. temperature as 300 K
+    # NOTE: This is different from the 'T00' variable in the WRF file, which is specific
+    #       to an internal parameter used for a hypothetical WRF profile. See dev notes
+    #       under 'derived variables for wrf-python'/'Computing temperature correctly'
+    #       for details
+    baseTp = 300.  # (K)
+    # Define other constants
+    R = 287.053  # dry gas constant (J/K*kg)
+    cp = 1005.  # heat capacity of air at constant pressure (J/K*kg)
+    kappa = R/cp  # (dimensionless)
+    # Draw necessary fields to produce slp:
+    #  dynaTp: 'dynamic', or perturbation pot. temperature added to baseTp to derive full Tp (K)
+    #  P: total pressure (baseP + dynaP) (Pa)
+    #  baseP: base-state pressure - this is directly from 'P00' stored in WRF file (Pa)
+    #  qVap: water vapor mixing ratio (kg/kg)
+    dynaTp = np.asarray(wrfHdl.variables['T']).squeeze()
+    P = np.asarray(wrf.getvar(wrfHdl,'p')).squeeze()
+    baseP = np.asarray(wrfHdl.variables['P00']).squeeze()
+    qVap = np.asarray(wrfHdl.variables['QVAPOR']).squeeze()
+    # Compute th (K)
+    th = dynaTp + baseTp
+    # Assert th as xarray.DataArray() object
+    th = xr.DataArray(th)
+    # Swap dimension names and coordinates from wrf.getvar(wrfHdl,'p'), which has
+    # same dimension and coordinates that th should have
+    dimCoordDonor = wrf.getvar(wrfHdl,'p')
+    th = dim_coord_swap(th,dimCoordDonor)
+    # Return th
+    return th
+
+
+# get_wrf_ss: given the netCDF4.Dataset() file handle of a WRF file, compute the static stability
+#             as per: 
+#                 https://www.ncl.ucar.edu/Document/Functions/Contributed/static_stability.shtml
+#             see reference:
+#                 Bluestein, H.B. (1992): Synoptic-Dynamic Meteorology in Midlatitudes
+#                                         Volume 1: Principles of Kinematics and Dynamics
+#             equation:
+#                 s = -T*d[log(theta)]/dp = -(T/theta)*d(theta)/dp
 #
 # INPUTS:
 #
@@ -168,7 +279,7 @@ def get_wrf_rh(wrfHdl):
 #
 # OUTPUTS:
 #
-# s: 3D static stability (NaN on upper and lower bounds)
+# statStab: 3D static stability (NaN on upper and lower bounds)
 #
 # DEPENDENCIES:
 #
@@ -181,7 +292,7 @@ def get_wrf_rh(wrfHdl):
 #
 # Presumes 3D variables are in (nz,ny,nx) dimension format with dimension names as
 # file handle attributes of (bottom_top, south_north, west_east)
-def compute_static_stability(wrfHDL):
+def get_wrf_ss(wrfHDL):
     import numpy as np
     import xarray as xr
     import wrf
