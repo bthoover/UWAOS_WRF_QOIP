@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from netCDF4 import Dataset
 import glob
 import matplotlib.cm as cm
+import argparse
 # define local functions
 #
 # plot_normalized_iterprofiles: generates a plot of normalized profiles (sums to 1.0 for each profile)
@@ -53,8 +54,15 @@ def plot_normalized_iterprofiles(profVar, profLev, titleStr, colMap, ax):
 # begin
 #
 if __name__ == "__main__":
-    # Note: will need to replace this hard-wired directory with an input-option at some point
-    dataDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/case_archives/nov2019/R_mu/positive/uvTq/'
+    # define parser for input argument(s)
+    parser = argparse.ArgumentParser(description='Define input data directory')
+    parser.add_argument('dataDir', metavar='DATADIR', type=str, help='full path to directory containing ' +
+                        'kinematic files (ends in /)')
+    commandInputs = parser.parse_args()
+    dataDir = commandInputs.dataDir
+    # check to make sure dataDir ends in '/', if not, add it to end of string
+    if dataDir[-1] != '/':
+        dataDir = dataDir + '/'
     # list of kinematic sensitivity files for each iteration
     sensFileList = glob.glob(dataDir + 'gradient_kinematic_d01_unpi*')
     sensFileList.sort()
