@@ -391,7 +391,7 @@ def gen_wrf_proj(wrfHdl):
 # since this is apparently the correct way to do it and it doesn't generate large
 # differences, I'm going to go with it in-case my proj <--> PlateCarree tests are
 # being done incorrectly. I'm doing no harm with it, as far as I can tell.
-def gen_cartopy_proj(wrfHDL):
+def gen_cartopy_proj(wrfHDL, cenLat=None, cenLon=None):
     from netCDF4 import Dataset
     from cartopy import crs as ccrs
     # WRF is assumed on a Lambert Conformal projection, if it's not the routine
@@ -399,9 +399,15 @@ def gen_cartopy_proj(wrfHDL):
     # as you run into them, but the most common projection is Lambert Conformal
     # so I'm only coding that one here.
     if (wrfHDL.MAP_PROJ == 1) & (wrfHDL.MAP_PROJ_CHAR == "Lambert Conformal"):
+        # if cenLat or cenLon are None, use wrfHDL attributes, otherwise override
+        # with selected values (for when attributes are defaulting to missing values)
+        if cenLat is None:
+            cenLat = wrfHDL.CEN_LAT
+        if cenLon is None:
+            cenLon = wrfHDL.CEN_LON
         return ccrs.LambertConformal(
-                                     central_longitude=wrfHDL.CEN_LON,
-                                     central_latitude=wrfHDL.CEN_LAT,
+                                     central_longitude=cenLon,
+                                     central_latitude=cenLat,
                                      standard_parallels=(wrfHDL.TRUELAT1,wrfHDL.TRUELAT2),
                                      globe=ccrs.Globe(
                                                       ellipse='sphere',
