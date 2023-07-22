@@ -263,6 +263,200 @@ def get_wrf_th(wrfHdl):
     # Return th
     return th
 
+# get_uvmet: given the netCDF4.Dataset() file handle of a WRF file, extract the (u,v) wind
+#            components and perform two operations on them before returning: (1) destagger
+#            to mass-points, and (2) rotate to Earth-relative coordinates. See:
+#
+#            https://www-k12.atmos.washington.edu/~ovens/wrfwinds.html
+#
+#            Returns met(u,v) as xarray.DataArray() with dimensions and coordinates for
+#            producing cross-sections (borrowed from pressure variable)
+#
+# INPUTS:
+#
+# wrfHDL: netCDF4.Dataset() file handle for WRF file
+#
+# OUTPUTS:
+#
+# uMet: u-component on mass-points and Earth-relative coordinates
+# vMet: v-component on mass-points and Earth-relative coordinates
+#
+# DEPENDENCIES:
+#
+# numpy
+# xarray
+# wrf-python
+# analysis_dependencies.dim_coord_swap()
+# NOTES:
+#
+# Presumes 3D variables are in (nz,ny,nx) dimension format with dimension names as
+# file handle attributes of (bottom_top, south_north, west_east)
+def get_uvmet(wrfHDL):
+    import numpy as np
+    import xarray as xr
+    import wrf
+    # define latitude and longitude
+    lat = np.asarray(wrfHDL.variables['XLAT']).squeeze()
+    lon = np.asarray(wrfHDL.variables['XLONG']).squeeze()
+    # assert longitude as 0-to-360 format
+    fix = np.where(lon < 0.)
+    lon[fix] = lon[fix] + 360.
+    # define central longitude from STAND_LON
+    cen_lon = wrfHDL.STAND_LON
+    # define standard parallels from TRUELAT1, TRUELAT2
+    true_lat1 = wrfHDL.TRUELAT1
+    true_lat2 = wrfHDL.TRUELAT2
+    # define radians-per-degree
+    radians_per_degree = np.pi/180.
+    # define map-factors on mass-points
+    mf = wrfHDL.variables['MAPFAC_M']
+    # define dx, dy as [nlat,nlon] grids normalized by mf
+    dx = wrfHDL.DX*np.power(mf, -1.)
+    dy = wrfHDL.DY*np.power(mf, -1.)
+    # define conic projection value based on true_lat1 and true_lat2
+    if((abs(true_lat1 - true_lat2) > 0.1) and
+       (abs(true_lat2 - 90.) > 0.1)):
+        cone = (np.log(np.cos(true_lat1 * radians_per_degree))
+              - np.log(np.cos(true_lat2 * radians_per_degree)))
+
+        cone = (cone /
+                (np.log(np.tan((45. - abs(true_lat1 / 2.)) * radians_per_degree))
+                - np.log(np.tan((45. - abs(true_lat2 / 2.)) * radians_per_degree))))
+    else:
+        cone = np.sin(abs(true_lat1) * radians_per_degree)
+    # define WRF u- and v-components (staggered, grid-relative)
+    uGrd = wrfHDL.variables['U']
+    vGrd = wrfHDL.variables['V']
+    # destagger to mass-points, fields in [time,lev,lon,lat]-dimension
+    uGrdM = wrf.destagger(uGrd, stagger_dim=3)
+    vGrdM = wrf.destagger(vGrd, stagger_dim=2)
+    # rotate to Earth-relative coordinate, fields in [var,time,lev,lon,lat]-dimension
+    # asserted as squeezed numpy array
+    rot = wrf.uvmet(uGrdM, vGrdM, lat, lon, cen_lon, cone)
+    uMet = np.asarray(rot[0,:,:,:,:]).squeeze()
+    vMet = np.asarray(rot[1,:,:,:,:]).squeeze()
+    # assert uMet, vMet as xarray.DataArray() object with blank dimension-names and coordinate values
+    uMet = xr.DataArray(uMet)
+    vMet = xr.DataArray(vMet)
+    # perform dimension/coordinate swap with pressure, which has appropriate dim/coord values
+    # .squeeze() reduces fields to [lev,lon,lat]-dimension
+    uMet = dim_coord_swap(uMet.squeeze(), wrf.getvar(wrfHDL,'p'))
+    vMet = dim_coord_swap(vMet.squeeze(), wrf.getvar(wrfHDL,'p'))
+    # return uMet, vMat
+    return uMet, vMet
+
+
+# get_wrf_kinematic: given the netCDF4.Dataset() file handle of a WRF file, return a chosen kinematic
+#                    quantity: 'vor', 'div', 'str', or 'shr'. Returns an xarray.DataArray() object with
+#                    appropriate dimension-names and coordinate varibles borrowed from pressure.
+#
+# INPUTS:
+#
+# wrfHDL: netCDF4.Dataset() file handle of WRF file
+# kinName: name of kinematic to compute ('vor', 'div', 'str', 'shr')
+#
+# OUTPUTS:
+#
+# kin: chosen kinematic field
+#
+# DEPENDENCIES:
+#
+# numpy
+# xarray
+# wrf-python
+# analysis_dependencies.dim_coord_swap()
+# analysis_dependencies.get_uvmet()
+def get_wrf_kinematic(wrfHDL, kinName):
+    import numpy as np
+    import xarray as xr
+    import wrf
+    # define internal functions to calculate kinematic terms:
+    #     each function takes the u- and v- grids on mass-points and in Earth-
+    #     relative coordinates, and dx and dy normalized by map-factors as
+    #     inputs, and returns kinemeatic field.
+    def calc_div(u,v,dx,dy):
+        ug  = np.asarray(u).squeeze()
+        vg  = np.asarray(v).squeeze()
+        dxg = np.asarray(dx).squeeze()
+        dyg = np.asarray(dy).squeeze()
+        nz,ny,nx = np.shape(ug)
+        kin = np.nan * np.ones((nz,ny,nx))
+        for k in range(nz):
+            for j in range(1,ny-1,1):
+                for i in range(1,nx-1,1):
+                    dudx = (ug[k,j,i+1]-ug[k,j,i-1])/(2.*dxg[j,i])
+                    dvdy = (vg[k,j+1,i]-vg[k,j-1,i])/(2.*dyg[j,i])
+                    kin[k,j,i] = dudx + dvdy
+        return kin
+    def calc_vor(u,v,dx,dy):
+        ug  = np.asarray(u).squeeze()
+        vg  = np.asarray(v).squeeze()
+        dxg = np.asarray(dx).squeeze()
+        dyg = np.asarray(dy).squeeze()
+        nz,ny,nx = np.shape(ug)
+        kin = np.nan * np.ones((nz,ny,nx))
+        for k in range(nz):
+            for j in range(1,ny-1,1):
+                for i in range(1,nx-1,1):
+                    dvdx = (vg[k,j,i+1]-vg[k,j,i-1])/(2.*dxg[j,i])
+                    dudy = (ug[k,j+1,i]-ug[k,j-1,i])/(2.*dyg[j,i])
+                    kin[k,j,i] = dvdx - dudy
+        return kin
+    def calc_str(u,v,dx,dy):
+        ug  = np.asarray(u).squeeze()
+        vg  = np.asarray(v).squeeze()
+        dxg = np.asarray(dx).squeeze()
+        dyg = np.asarray(dy).squeeze()
+        nz,ny,nx = np.shape(ug)
+        kin = np.nan * np.ones((nz,ny,nx))
+        for k in range(nz):
+            for j in range(1,ny-1,1):
+                for i in range(1,nx-1,1):
+                    dudx = (ug[k,j,i+1]-ug[k,j,i-1])/(2.*dxg[j,i])
+                    dvdy = (vg[k,j+1,i]-vg[k,j-1,i])/(2.*dyg[j,i])
+                    kin[k,j,i] = dudx - dvdy
+        return kin
+    def calc_shr(u,v,dx,dy):
+        ug  = np.asarray(u).squeeze()
+        vg  = np.asarray(v).squeeze()
+        dxg = np.asarray(dx).squeeze()
+        dyg = np.asarray(dy).squeeze()
+        nz,ny,nx = np.shape(ug)
+        kin = np.nan * np.ones((nz,ny,nx))
+        for k in range(nz):
+            for j in range(1,ny-1,1):
+                for i in range(1,nx-1,1):
+                    dvdx = (vg[k,j,i+1]-vg[k,j,i-1])/(2.*dxg[j,i])
+                    dudy = (ug[k,j+1,i]-ug[k,j-1,i])/(2.*dyg[j,i])
+                    kin[k,j,i] = dvdx + dudy
+        return kin
+    # sanity-check kinName, fail reports error and returns None
+    if kinName in ['vor', 'div', 'str', 'shr']:
+        # define u- and v- components on mass-points and Earth-relative coordinates
+        u, v = get_uvmet(wrfHDL)
+        # define map-factors on mass-points
+        mf = wrfHDL.variables['MAPFAC_M']
+        # define dx, dy as [nlat,nlon] grids normalized by mf
+        dx = wrfHDL.DX*np.power(mf, -1.)
+        dy = wrfHDL.DY*np.power(mf, -1.)
+        # define kinematic term
+        if kinName == 'vor':
+            kin = calc_vor(u, v, dx, dy)
+        elif kinName == 'div':
+            kin = calc_div(u, v, dx, dy)
+        elif kinName == 'str':
+            kin = calc_str(u, v, dx, dy)
+        elif kinName == 'shr':
+            kin = calc_shr(u, v, dx, dy)
+        # assert kin as xarray.DataArray() object
+        kin = xr.DataArray(kin)
+        # perform dimension/coordinate swap with pressure, which has appropriate dim/coord values
+        kin = dim_coord_swap(kin, wrf.getvar(wrfHDL,'p'))
+        # return kin
+        return kin
+    else:
+        print(kinName + ' not in kinematics list: vor, div, str, shr')
+        return None
 
 # get_wrf_ss: given the netCDF4.Dataset() file handle of a WRF file, compute the static stability
 #             as per: 
@@ -401,10 +595,15 @@ def gen_cartopy_proj(wrfHDL, cenLat=None, cenLon=None):
     if (wrfHDL.MAP_PROJ == 1) & (wrfHDL.MAP_PROJ_CHAR == "Lambert Conformal"):
         # if cenLat or cenLon are None, use wrfHDL attributes, otherwise override
         # with selected values (for when attributes are defaulting to missing values)
+        #
+        # NOTE: Better to use MOAD_CEN_LAT and STAND_LON for cenLat and cenLon than
+        #       the subdomain-specific CEN_LAT and CEN_LON values. See this note
+        #       as it pertains to rotating from WRF-relative to Earth-relative wind
+        #       coordinates: https://www-k12.atmos.washington.edu/~ovens/wrfwinds.html
         if cenLat is None:
-            cenLat = wrfHDL.CEN_LAT
+            cenLat = wrfHDL.MOAD_CEN_LAT
         if cenLon is None:
-            cenLon = wrfHDL.CEN_LON
+            cenLon = wrfHDL.STAND_LON
         return ccrs.LambertConformal(
                                      central_longitude=cenLon,
                                      central_latitude=cenLat,
