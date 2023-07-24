@@ -36,7 +36,7 @@ ptd_hdl = Dataset(ptd_file) #...................................................
 # Extract grid information
 lat = wrf.getvar(inp_hdl,'lat') #............................................................. grid latitudes [nlat,nlon]
 lon = wrf.getvar(inp_hdl,'lon') #............................................................. grid longitudes [nat,nlon]
-cen_lon = inp_hdl.CEN_LON #................................................................... grid center longitude
+cen_lon = inp_hdl.STAND_LON #................................................................. grid center longitude
 true_lat1 = inp_hdl.TRUELAT1 #................................................................ grid true latitude 1
 true_lat2 = inp_hdl.TRUELAT2 #................................................................ grid true latitude 2
 radians_per_degree = np.pi/180.
