@@ -263,6 +263,50 @@ def get_wrf_th(wrfHdl):
     # Return th
     return th
 
+
+# get_wrf_eth: given the netCDF4 Dataset() handle for a WRF file, produces the 
+# equivalent potential temperature (K)
+#
+# INPUTS:
+#
+# wrfHdl: WRF file netCDF4.Dataset() handle
+#
+# OUTPUTS:
+#
+# eth: equivalent potential temperature in (nz,ny,nx) dimension (K)
+#
+# DEPENDENCIES:
+#
+# numpy
+# xarray
+# netCDF4.Dataset()
+# wrf(-python)
+# analysis_dependencies.get_wrf_tk()
+# analysis_dependencies.dim_coord_swap()
+def get_wrf_eth(wrfHdl):
+    import numpy as np
+    import xarray as xr
+    from netCDF4 import Dataset
+    import wrf
+    # define input variables to wrf.eth():
+    # P: Pressure
+    P = np.asarray(wrf.getvar(wrfHdl,'p')).squeeze()
+    # qVap: Vapor Pressure
+    qVap = np.asarray(wrfHdl.variables['QVAPOR']).squeeze()
+    # T: Temperature (K)
+    T = np.asarray(get_wrf_tk(wrfHdl)).squeeze()
+    # derive eth from input (qVap,T,P)
+    eth = wrf.eth(qVap, T, P, meta=False, units='K')  # (K)
+    # assert eth as xarray.DataArray() object
+    eth = xr.DataArray(eth)
+    # Swap dimension names and coordinates from wrf.getvar(wrfHdl,'p'), which has
+    # same dimension and coordinates that eth should have
+    dimCoordDonor = wrf.getvar(wrfHdl,'p')
+    eth = dim_coord_swap(eth,dimCoordDonor)
+    # Return eth
+    return eth
+
+
 # get_uvmet: given the netCDF4.Dataset() file handle of a WRF file, extract the (u,v) wind
 #            components and perform two operations on them before returning: (1) destagger
 #            to mass-points, and (2) rotate to Earth-relative coordinates. See:
