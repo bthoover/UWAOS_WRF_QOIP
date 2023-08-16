@@ -746,6 +746,133 @@ def get_xsect(wrfHDL, var3D, latBeg, lonBeg, latEnd, lonEnd):
     return xSect, latList, lonList
 
 
+# plan_section_plot: Generates a horizontal plan-section plot of shading, contours, and vectors as desired
+#                    Figure is a single panel
+#
+# REQUIRED INPUTS:
+#
+# wrfHDL: netCDF.Dataset() file-handle for WRF file for dimension/coordinate data
+# lat: [ny,nx] grid of latitudes
+# lon: [ny,nx] grid of longitudes
+# contVariableList: list of [ny,nx] variables for producing contours
+# contIntervalList: list of interval values for each contour variable in contourVariableList
+# contColorList: list of colors for each contour variable in contourVariableList
+# shadVariable: [ny,nx] variable for producing shading
+# shadInterval: interval values for shading
+# datProj: cartopy.crs() projection of data
+# plotProj: cartopy.crs() projection of 2D plots
+#
+# OPTIONAL INPUTS:
+#
+# shadCmap: name of colormap for shading (default: 'seismic')
+# contLineThicknessList: list of line thicknesses for each contour variable in contourVariableList (default: 1.0)
+# shadAlpha: alpha of shading (default: 1.0)
+# vecColor: name of color for vectors (default: 'black')
+# uVecVariable: [ny,nx] variable for u-component of vectors
+# vVecVariable: [ny,nx] variable for v-component of vectors
+# vectorThinning: skip-ratio for plotting vectors (e.g. vectorThinning=2 only plots [::2])
+# 
+#
+# OUTPUTS:
+#
+# fig: figure handle
+#
+# DEPENDENCIES:
+#
+# numpy
+# wrf-python
+# xarray (implicit, also dependency of wrf-python)
+# matplotlib.pyplot
+# matplotlib.ticker
+# cartopy.crs
+# cartopy.feature
+# cartopy.mpl.gridliner functions: LONGITUDE_FORMATTER, LATITUDE_FORMATTER
+def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, contColorList,
+                      shadVariable, shadInterval, datProj, plotProj, shadCmap='seismic',
+                      contLineThicknessList=None, shadAlpha=1.0, vecColor='black',
+                      uVecVariable=None, vVecVariable=None, vectorThinning=1):
+    import numpy as np
+    import wrf
+    import matplotlib.pyplot as plt
+    import matplotlib.ticker as mticker
+    from cartopy import crs as ccrs
+    import cartopy.feature as cfeature
+    from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
+
+    # define lat/lon lines for SLP/thickness plot
+    latLines = np.arange(-90., 90., 5.)
+    lonLines = np.arange(-180., 180. ,5.)
+    # define figure for a single panel
+    fig, ax = plt.subplots(nrows=1, ncols=1, subplot_kw={'projection': datProj}, figsize=(12,9))
+    # plot shading
+    shd = ax.contourf(lon,
+                      lat,
+                      shadVariable,
+                      levels=shadInterval,
+                      cmap=shadCmap,
+                      vmin=np.min(shadInterval),
+                      vmax=np.max(shadInterval),
+                      extend='both',
+                      transform=plotProj,
+                      alpha=shadAlpha)
+    # assert contour inputs as list if they are not lists (i.e. if a single value was passed without
+    # encapsulating in a list)
+    contVariableList = contVariableList if type(contVariableList)==list else [contVariableList]
+    contIntervalList = contIntervalList if type(contIntervalList)==list else [contIntervalList]
+    contColorList = contColorList if type(contColorList)==list else [contColorList]
+    # contLineThicknessList is optional, if not set (is None) then replace with list of None
+    if contLineThicknessList is not None:
+        contLineThicknessList = contLineThicknessList if type(contLineThicknessList)==list else [contLineThicknessList]
+    else:
+        contLineThicknessList = [None] * len(contVariableList)
+    # check for same length among all contour lists, if not same length, report error and do not plot contours
+    contourLists=[len(contVariableList), len(contIntervalList), len(contColorList), len(contLineThicknessList)]
+    if len(set(contourLists)) == 1:
+        print('generating {:d} contours'.format(len(contVariableList)))
+        # plot all contours with provided interval, color, and line thickness (if any, default 1.0)
+        for i in range(len(contVariableList)):
+            contVariable = contVariableList[i]
+            contInterval = contIntervalList[i]
+            contColor = contColorList[i]
+            contLineThickness = contLineThicknessList[i] if contLineThicknessList[i] is not None else 1.
+            con = ax.contour(lon,
+                             lat,
+                             contVariable,
+                             levels=contInterval,
+                             colors=contColor,
+                             linewidths=contLineThickness,
+                             transform=plotProj)
+    else:
+        print('ERROR: Contour lists (Variable, Interval, Color) not same length, no contours plotted')
+    # plot a colorbar for the shading
+    plt.colorbar(ax=ax, mappable=shd)
+    # plot vectors, if any
+    if (uVecVariable is not None) & (vVecVariable is not None):
+        ax.quiver(x=lon[::vectorThinning, ::vectorThinning],
+                  y=lat[::vectorThinning, ::vectorThinning],
+                  u=uVecVariable[::vectorThinning, ::vectorThinning],
+                  v=vVecVariable[::vectorThinning, ::vectorThinning],
+                  color=vecColor,
+                  transform=plotProj)
+    # add coastline in brown
+    ax.add_feature(cfeature.COASTLINE, edgecolor='brown', linewidth=1.5)
+    # add gridlines
+    gl = ax.gridlines(crs=plotProj, draw_labels=True,
+                      linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
+    gl.top_labels = False
+    gl.bottom_labels = False
+    gl.right_labels = False
+    gl.xlines = True
+    gl.xlocator = mticker.FixedLocator(lonLines)
+    gl.ylocator = mticker.FixedLocator(latLines)
+    gl.xformatter = LONGITUDE_FORMATTER
+    gl.yformatter = LATITUDE_FORMATTER
+    gl.xlabel_style = {'alpha' : 0.}
+    gl.ylabel_style = {'size' : 9, 'color' : 'gray'}
+    # return figure handle
+    return fig
+
+
 # cross_section_plot: Generates a series of 2-panel plots of
 #                         left: cross-section from (latBeg,lonBeg) to (latEnd,lonEnd) of xSectCont contours and xSectShad shading
 #                         right: sea-level pressure and thickness contours with sea-level pressure perturbation shaded, and the cross-section line
