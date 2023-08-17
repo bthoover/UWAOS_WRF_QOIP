@@ -804,17 +804,20 @@ def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, cont
     lonLines = np.arange(-180., 180. ,5.)
     # define figure for a single panel
     fig, ax = plt.subplots(nrows=1, ncols=1, subplot_kw={'projection': datProj}, figsize=(12,9))
-    # plot shading
-    shd = ax.contourf(lon,
-                      lat,
-                      shadVariable,
-                      levels=shadInterval,
-                      cmap=shadCmap,
-                      vmin=np.min(shadInterval),
-                      vmax=np.max(shadInterval),
-                      extend='both',
-                      transform=plotProj,
-                      alpha=shadAlpha)
+    # plot shading, if any
+    if shadVariable is not None:
+        shd = ax.contourf(lon,
+                          lat,
+                          shadVariable,
+                          levels=shadInterval,
+                          cmap=shadCmap,
+                          vmin=np.min(shadInterval),
+                          vmax=np.max(shadInterval),
+                          extend='both',
+                          transform=plotProj,
+                          alpha=shadAlpha)
+    else:
+        shd = None
     # assert contour inputs as list if they are not lists (i.e. if a single value was passed without
     # encapsulating in a list)
     contVariableList = contVariableList if type(contVariableList)==list else [contVariableList]
@@ -830,30 +833,39 @@ def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, cont
     if len(set(contourLists)) == 1:
         print('generating {:d} contours'.format(len(contVariableList)))
         # plot all contours with provided interval, color, and line thickness (if any, default 1.0)
+        # put each contour into a list for returning to user for any further modification
+        cons = []
         for i in range(len(contVariableList)):
             contVariable = contVariableList[i]
             contInterval = contIntervalList[i]
             contColor = contColorList[i]
             contLineThickness = contLineThicknessList[i] if contLineThicknessList[i] is not None else 1.
-            con = ax.contour(lon,
-                             lat,
-                             contVariable,
-                             levels=contInterval,
-                             colors=contColor,
-                             linewidths=contLineThickness,
-                             transform=plotProj)
+            if contVariable is not None:
+                con = ax.contour(lon,
+                                 lat,
+                                 contVariable,
+                                 levels=contInterval,
+                                 colors=contColor,
+                                 linewidths=contLineThickness,
+                                 transform=plotProj)
+            else:
+                con = None
+            cons.append(con)
     else:
         print('ERROR: Contour lists (Variable, Interval, Color) not same length, no contours plotted')
-    # plot a colorbar for the shading
-    plt.colorbar(ax=ax, mappable=shd)
+    # plot a colorbar for the shading, if any
+    if shadVariable is not None:
+        plt.colorbar(ax=ax, mappable=shd)
     # plot vectors, if any
     if (uVecVariable is not None) & (vVecVariable is not None):
-        ax.quiver(x=lon[::vectorThinning, ::vectorThinning],
-                  y=lat[::vectorThinning, ::vectorThinning],
-                  u=uVecVariable[::vectorThinning, ::vectorThinning],
-                  v=vVecVariable[::vectorThinning, ::vectorThinning],
-                  color=vecColor,
-                  transform=plotProj)
+        vec=ax.quiver(x=lon[::vectorThinning, ::vectorThinning],
+                      y=lat[::vectorThinning, ::vectorThinning],
+                      u=uVecVariable[::vectorThinning, ::vectorThinning],
+                      v=vVecVariable[::vectorThinning, ::vectorThinning],
+                      color=vecColor,
+                      transform=plotProj)
+    else:
+        vec=None
     # add coastline in brown
     ax.add_feature(cfeature.COASTLINE, edgecolor='brown', linewidth=1.5)
     # add gridlines
@@ -869,8 +881,8 @@ def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, cont
     gl.yformatter = LATITUDE_FORMATTER
     gl.xlabel_style = {'alpha' : 0.}
     gl.ylabel_style = {'size' : 9, 'color' : 'gray'}
-    # return figure handle
-    return fig
+    # return figure handle along with shd, cons, and vec as a tuple
+    return fig, (shd, cons, vec)
 
 
 # cross_section_plot: Generates a series of 2-panel plots of
