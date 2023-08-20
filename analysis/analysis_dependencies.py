@@ -771,7 +771,7 @@ def get_xsect(wrfHDL, var3D, latBeg, lonBeg, latEnd, lonEnd):
 # uVecVariable: [ny,nx] variable for u-component of vectors
 # vVecVariable: [ny,nx] variable for v-component of vectors
 # vectorThinning: skip-ratio for plotting vectors (e.g. vectorThinning=2 only plots [::2])
-# 
+# figax: figure axis to plot to 
 #
 # OUTPUTS:
 #
@@ -790,7 +790,7 @@ def get_xsect(wrfHDL, var3D, latBeg, lonBeg, latEnd, lonEnd):
 def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, contColorList,
                       shadVariable, shadInterval, datProj, plotProj, shadCmap='seismic',
                       contLineThicknessList=None, shadAlpha=1.0, vecColor='black',
-                      uVecVariable=None, vVecVariable=None, vectorThinning=1):
+                      uVecVariable=None, vVecVariable=None, vectorThinning=1, figax=None):
     import numpy as np
     import wrf
     import matplotlib.pyplot as plt
@@ -802,8 +802,11 @@ def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, cont
     # define lat/lon lines for SLP/thickness plot
     latLines = np.arange(-90., 90., 5.)
     lonLines = np.arange(-180., 180. ,5.)
-    # define figure for a single panel
-    fig, ax = plt.subplots(nrows=1, ncols=1, subplot_kw={'projection': datProj}, figsize=(12,9))
+    # define figure for a single panel, if no figax provided
+    if figax is None:
+        fig, ax = plt.subplots(nrows=1, ncols=1, subplot_kw={'projection': datProj}, figsize=(12,9))
+    else:
+        ax = figax
     # plot shading, if any
     if shadVariable is not None:
         shd = ax.contourf(lon,
@@ -881,8 +884,8 @@ def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, cont
     gl.yformatter = LATITUDE_FORMATTER
     gl.xlabel_style = {'alpha' : 0.}
     gl.ylabel_style = {'size' : 9, 'color' : 'gray'}
-    # return figure handle along with shd, cons, and vec as a tuple
-    return fig, (shd, cons, vec)
+    # return figure axis handle along with shd, cons, and vec as a tuple
+    return ax, (shd, cons, vec)
 
 
 # cross_section_plot: Generates a series of 2-panel plots of
