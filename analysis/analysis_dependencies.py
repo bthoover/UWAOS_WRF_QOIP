@@ -771,6 +771,7 @@ def get_xsect(wrfHDL, var3D, latBeg, lonBeg, latEnd, lonEnd):
 # uVecVariable: [ny,nx] variable for u-component of vectors
 # vVecVariable: [ny,nx] variable for v-component of vectors
 # vectorThinning: skip-ratio for plotting vectors (e.g. vectorThinning=2 only plots [::2])
+# vectorScale: scaling factor for plotting vectors (larger value == reduced vector size)
 # figax: figure axis to plot to 
 #
 # OUTPUTS:
@@ -790,7 +791,8 @@ def get_xsect(wrfHDL, var3D, latBeg, lonBeg, latEnd, lonEnd):
 def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, contColorList,
                       shadVariable, shadInterval, datProj, plotProj, shadCmap='seismic',
                       contLineThicknessList=None, shadAlpha=1.0, vecColor='black',
-                      uVecVariable=None, vVecVariable=None, vectorThinning=1, figax=None):
+                      uVecVariable=None, vVecVariable=None, vectorThinning=1, vectorScale=None,
+                      figax=None):
     import numpy as np
     import wrf
     import matplotlib.pyplot as plt
@@ -866,6 +868,7 @@ def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, cont
                       u=uVecVariable[::vectorThinning, ::vectorThinning],
                       v=vVecVariable[::vectorThinning, ::vectorThinning],
                       color=vecColor,
+                      scale=vectorScale,
                       transform=plotProj)
     else:
         vec=None
