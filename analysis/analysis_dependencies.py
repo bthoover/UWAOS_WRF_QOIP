@@ -1204,7 +1204,7 @@ def compute_inverse_laplacian(wrfHDL, frc):
     def grad(psi0):
         return LAPS.dot(LAP.dot(psi0) - forcevec)
     # Optimize to solve
-    field, value, info = scipy.optimize.fmin_l_bfgs_b(fun, psi0.flatten(), grad, pgtol=1e-14, factr=.0001,
+    field, value, info = scipy.optimize.fmin_l_bfgs_b(fun, psi0.flatten(), grad, pgtol=1e-16, factr=.0001,
                                                   maxiter=150000,maxfun=15000*50)
     # Stop clock
     end = time.time() #...................................................................... Ending time
