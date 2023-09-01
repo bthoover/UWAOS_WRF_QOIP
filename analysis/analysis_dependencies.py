@@ -919,6 +919,7 @@ def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, cont
 #
 # OPTIONAL INPUTS:
 #
+# xSectTitleStr: title of cross-section panel as xSectTitleStr + '(<line-color>)' (default: 'cross section <n>')
 # xSectShadCmap: name of colormap for xSectShad (default: 'seismic')
 # xSectContLineThicknessList: list of line thicknesses for xSectContVariable contours
 # slpPertCmap: name of colormap for slpPert (default: 'seismic')
@@ -944,7 +945,7 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
                        xSectContVariableList, xSectContIntervalList, xSectContColorList,
                        xSectShadVariable, xSectShadInterval, slp, slpInterval, thk, thkInterval,
                        slpPert, slpPertInterval, datProj, plotProj,
-                       xSectShadCmap='seismic', xSectContLineThicknessList=None,
+                       xSectTitleStr=None, xSectShadCmap='seismic', xSectContLineThicknessList=None,
                        slpPertCmap='seismic', presLevMin=10000., presLevMax=100000.):
     import numpy as np
     import wrf
@@ -1064,7 +1065,10 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
         ax.set_ylim((np.min(yTickIndex),np.max(yTickIndex)))
         ax.invert_yaxis()
         # add title
-        ax.set_title('cross section {:d}'.format(i) + ' (' + xSectLineColor + ')')
+        if xSectTitleStr is not None:
+            ax.set_title(xSectTitleStr + ' (' + xSectLineColor + ')')
+        else:
+            ax.set_title('cross section {:d}'.format(i) + ' (' + xSectLineColor + ')')
         plt.colorbar(ax=ax, mappable=shd)
         # plot SLP and thickness with SLP perturbation and cross-section line (right panel)
         ax = fig.add_axes(rect=rightPanels[i], projection=datProj)
