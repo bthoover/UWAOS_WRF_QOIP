@@ -893,7 +893,7 @@ def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, cont
 
 # cross_section_plot: Generates a series of 2-panel plots of
 #                         left: cross-section from (latBeg,lonBeg) to (latEnd,lonEnd) of xSectShadVariable shading and all contours in xSectContVariableList
-#                         right: sea-level pressure and thickness contours with sea-level pressure perturbation shaded, and the cross-section line
+#                         right: sea-level pressure and thickness contours, and the cross-section line
 #                     Figure is 2 columns by X rows, with a row for each cross-section, up to 3 cross-sections
 #
 # REQUIRED INPUTS:
@@ -912,8 +912,6 @@ def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, cont
 # slpInterval: interval values for slp contours
 # thk: 2D thickness (probably unperturbed thk)
 # thkInterval: interval values for thickness contours
-# slpPert: 2D sea-level pressure perturbation
-# slpPertInterval: interval values for slpPert shading
 # datProj: cartopy.crs() projection of data
 # plotProj: cartopy.crs() projection of 2D plots
 #
@@ -922,7 +920,6 @@ def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, cont
 # xSectTitleStr: title of cross-section panel as xSectTitleStr + '(<line-color>)' (default: 'cross section <n>')
 # xSectShadCmap: name of colormap for xSectShad (default: 'seismic')
 # xSectContLineThicknessList: list of line thicknesses for xSectContVariable contours
-# slpPertCmap: name of colormap for slpPert (default: 'seismic')
 # presLevMin: minimum pressure level of cross-section (default: 10000. Pa)
 # presLevMax: maximum pressure level of cross-section (default: 100000. Pa)
 #
@@ -944,9 +941,8 @@ def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, cont
 def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
                        xSectContVariableList, xSectContIntervalList, xSectContColorList,
                        xSectShadVariable, xSectShadInterval, slp, slpInterval, thk, thkInterval,
-                       slpPert, slpPertInterval, datProj, plotProj,
-                       xSectTitleStr=None, xSectShadCmap='seismic', xSectContLineThicknessList=None,
-                       slpPertCmap='seismic', presLevMin=10000., presLevMax=100000.):
+                       datProj, plotProj, xSectTitleStr=None, xSectShadCmap='seismic',
+                       xSectContLineThicknessList=None, presLevMin=10000., presLevMax=100000.):
     import numpy as np
     import wrf
     import matplotlib.pyplot as plt
@@ -1078,6 +1074,235 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
         # assert lon2D as 0 to 360 format
         fix = np.where(lon2D < 0.)
         lon2D[fix] = lon2D[fix] + 360.
+        # plot slp as black contours
+        con1 = ax.contour(lon2D, lat2D, slp, slpInterval, colors='black', linewidths=1.0,
+                          transform=plotProj)
+        # label every other slp contour
+        ax.clabel(con1, levels=slpInterval[::2])
+        # plot thk as green contours
+        con2 = ax.contour(lon2D, lat2D, thk, thkInterval, colors='green', linewidths=0.75,
+                          transform=plotProj)
+        # add coastline in brown
+        ax.add_feature(cfeature.COASTLINE, edgecolor='brown', linewidth=1.5)
+        ax.set_title('cross section {:d}'.format(i))
+        # add gridlines
+        gl = ax.gridlines(crs=plotProj, draw_labels=True,
+                          linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
+        gl.top_labels = False
+        gl.bottom_labels = False
+        gl.right_labels = False
+        gl.xlines = True
+        gl.xlocator = mticker.FixedLocator(lonLines)
+        gl.ylocator = mticker.FixedLocator(latLines)
+        gl.xformatter = LONGITUDE_FORMATTER
+        gl.yformatter = LATITUDE_FORMATTER
+        gl.xlabel_style = {'alpha' : 0.}
+        gl.ylabel_style = {'size' : 9, 'color' : 'gray'}
+        # plot cross-section line
+        ax.plot(lonBeg, latBeg, 'o', transform=plotProj, color=xSectLineColor)
+        ax.plot(lonEnd, latEnd, 'o', transform=plotProj, color=xSectLineColor)
+        ax.plot((lonBeg, lonEnd), (latBeg, latEnd), transform=plotProj, color=xSectLineColor)
+    # return figure handle
+    return fig
+
+
+# cross_section_diffplot: Generates a series of 2-panel plots of
+#                          left: cross-section from (latBeg,lonBeg) to (latEnd,lonEnd) of xSectShadVariable1-xSectShadVariable2 shading and all contours in xSectContVariableList, with all variables attached to a companion WRF netCDF4.Dataset() file handle for appropriate pressure coordinates
+#                         right: sea-level pressure and thickness contours with sea-level pressure perturbation shaded, and the cross-section line
+#                     Figure is 2 columns by X rows, with a row for each cross-section, up to 3 cross-sections
+#
+# REQUIRED INPUTS:
+#
+# latBegList: list of beginning latitude for each cross-section (max: 3)
+# lonBegList: list of beginning longitudes for each cross-section (max: 3)
+# latEndList: list of ending latitude for each cross-section (max: 3)
+# lonEndList: list of ending longitudes for each cross-section (max: 3)
+# xSectContVariableList: list of tuples containing (3D variable, wrfHDL) for producing cross-section contours on wrfHDL's pressure coordinate
+# xSectContIntervalList: list of interval values for xSectContVariable contours
+# xSectContColorList: list of colors for xSectContVariable contours
+# xSectShadVariable1: tuple containing (3D variable, wrfHDL) for producing cross-section shading of xSectShadVariable2-xSectShadVariable1
+# xSectShadVariable2: tuple containing (3D variable, wrfHDL) for producing cross-section shading of xSectShadVariable2-xSectShadVariable1
+# xSectShadInterval: interval values for xSectCont shading
+# slp: 2D sea-level pressure (probably unperturbed SLP)
+# slpInterval: interval values for slp contours
+# thk: 2D thickness (probably unperturbed thk)
+# thkInterval: interval values for thickness contours
+# slpPert: 2D sea-level pressure perturbation
+# slpPertInterval: interval values for slpPert shading
+# datProj: cartopy.crs() projection of data
+# plotProj: cartopy.crs() projection of 2D plots
+#
+# OPTIONAL INPUTS:
+#
+# xSectTitleStr: title of cross-section panel as xSectTitleStr + '(<line-color>)' (default: 'cross section <n>')
+# xSectShadCmap: name of colormap for xSectShad (default: 'seismic')
+# xSectContLineThicknessList: list of line thicknesses for xSectContVariable contours
+# slpPertCmap: name of colormap for slpPert (default: 'seismic')
+# presLevMin: minimum pressure level of cross-section (default: 10000. Pa)
+# presLevMax: maximum pressure level of cross-section (default: 100000. Pa)
+#
+# OUTPUTS:
+#
+# fig: figure handle containing all panels
+#
+# DEPENDENCIES:
+#
+# numpy
+# wrf-python
+# xarray (implicit, also dependency of wrf-python)
+# matplotlib.pyplot
+# matplotlib.ticker
+# cartopy.crs
+# cartopy.feature
+# cartopy.mpl.gridliner functions: LONGITUDE_FORMATTER, LATITUDE_FORMATTER
+# analysis_dependencies.get_xsect()
+def cross_section_diffplot(latBegList, lonBegList, latEndList, lonEndList,
+                       xSectContVariableList, xSectContIntervalList, xSectContColorList,
+                       xSectShadVariable1, xSectShadVariable2, xSectShadInterval, slp, slpInterval, thk, thkInterval,
+                       slpPert, slpPertInterval, datProj, plotProj,
+                       xSectTitleStr=None, xSectShadCmap='seismic', xSectContLineThicknessList=None,
+                       slpPertCmap='seismic', presLevMin=10000., presLevMax=100000.):
+    import numpy as np
+    import wrf
+    import matplotlib.pyplot as plt
+    import matplotlib.ticker as mticker
+    from cartopy import crs as ccrs
+    import cartopy.feature as cfeature
+    from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
+    # sanity test some inputs: all of the lat/lon lists should be same length, and no longer
+    # than 3, and no shorter than 1
+    listLengths = [len(latBegList), len(lonBegList), len(latEndList), len(lonEndList)]
+    if len(set(listLengths)) > 1:
+        print('ERROR: not all lat/lon lists equal length, aborting')
+        return None
+    elif any(listLengths) > 3:
+        print('ERROR: at least one lat/lon list too long, aborting')
+        return None
+    elif any(listLengths) < 1:
+        print('ERROR: at least one lat/lon list size zero, aborting')
+    else:
+        # define number of cross-sections from listLengths (all should be equal, just pick one)
+        numxSect = len(latBegList)
+        # define figure panel dimensions based on numxSect:
+        # 1 cross-section
+        if numxSect == 1:
+            leftPanels =  [
+                           [0.0, 0.0, 0.5, 1.0]
+                          ]
+            rightPanels = [
+                           [0.5, 0.0, 0.5, 1.0]
+                          ]
+        # 2 cross-sections
+        elif numxSect == 2:
+            leftPanels =  [
+                           [0.0, 0.5, 0.4, 0.4],
+                           [0.0, 0.0, 0.4, 0.4]
+                          ]
+            rightPanels = [
+                           [0.5, 0.5, 0.5, 0.4],
+                           [0.5, 0.0, 0.5, 0.4]
+                          ]
+        # 3 cross-sections
+        elif numxSect == 3:
+            leftPanels =  [
+                           [0.0, 0.7, 0.4, 0.3],
+                           [0.0, 0.35, 0.4, 0.3],
+                           [0.0, 0.0, 0.4, 0.3]
+                          ]
+            rightPanels = [
+                           [0.5, 0.7, 0.5, 0.3],
+                           [0.5, 0.35, 0.5, 0.3],
+                           [0.5, 0.0, 0.5, 0.3]
+                          ]
+    # loop through cross-sections
+    for i in range(numxSect):
+        # generate 2-panel plots with (left)  cross-section of initial geopotential height perturbations, and
+        #                             (right) cross-section line on SLP/thickness plot with SLP perturbation
+        # define latBeg, lonBeg, latEnd, lonEnd from lists
+        latBeg = latBegList[i]
+        lonBeg = lonBegList[i]
+        latEnd = latEndList[i]
+        lonEnd = lonEndList[i]
+        # define lat/lon lines for SLP/thickness plot
+        latLines = np.arange(-90., 90., 5.)
+        lonLines = np.arange(-180., 180. ,5.)
+        # define cross-section line-color based on value of i
+        if i == 0:
+            xSectLineColor = 'green'
+        elif i == 1:
+            xSectLineColor = 'orange'
+        elif i == 2:
+            xSectLineColor = 'magenta'
+        # define figure for all panels (allow longer y-dimension for more cross-sections)
+        fig = plt.figure(figsize=(12,5*numxSect))
+        # assert contour inputs as list if they are not lists (i.e. if a single value was passed without
+        # encapsulating in a list)
+        xSectContVariableList = xSectContVariableList if type(xSectContVariableList)==list else [xSectContVariableList]
+        xSectContIntervalList = xSectContIntervalList if type(xSectContIntervalList)==list else [xSectContIntervalList]
+        xSectContColorList = xSectContColorList if type(xSectContColorList)==list else [xSectContColorList]
+        # xSectContLineThicknessList is optional, if not set (is None) then replace with list of None
+        if xSectContLineThicknessList is not None:
+            xSectContLineThicknessList = xSectContLineThicknessList if type(xSectContLineThicknessList)==list else [xSectContLineThicknessList]
+        else:
+            xSectContLineThicknessList = [None] * len(xSectContVariableList)
+        # check for same length among all contour lists, if not same length, report error and do not plot contours
+        contourLists=[len(xSectContVariableList), len(xSectContIntervalList), len(xSectContColorList), len(xSectContLineThicknessList)]
+        # shading (separate each xSectShadVariable(#) into component wrfHDL and shadVariable for computing variable on pressure coord
+        shadVariable = xSectShadVariable1[0]
+        wrfHDL = xSectShadVariable1[1]
+        xSectShad1, latList, lonList = get_xsect(wrfHDL,
+                                                 shadVariable,
+                                                 latBeg, lonBeg, latEnd, lonEnd)
+        shadVariable = xSectShadVariable2[0]
+        wrfHDL = xSectShadVariable2[1]
+        xSectShad2                   = get_xsect(wrfHDL,
+                                                 shadVariable,
+                                                 latBeg, lonBeg, latEnd, lonEnd)[0]
+        # plot cross-section (left panel)
+        ax = fig.add_axes(rect=leftPanels[i])
+        # plot shading
+        shd = ax.contourf(xSectShad2-xSectShad1, levels=xSectShadInterval, cmap=xSectShadCmap, extend='both')
+        # cycle through list of contours
+        if len(set(contourLists)) == 1:
+            print('generating {:d} contours'.format(len(xSectContVariableList)))
+            # plot all contours with provided interval, color, and line thickness (if any, default 1.0)
+            # put each contour into a list for returning to user for any further modification
+            cons = []
+            for j in range(len(xSectContVariableList)):
+                xSectContVariable = xSectContVariableList[j]
+                xSectContInterval = xSectContIntervalList[j]
+                xSectContColor = xSectContColorList[j]
+                xSectContLineThickness = xSectContLineThicknessList[j] if xSectContLineThicknessList[j] is not None else 1.
+                if xSectContVariable is not None:
+                    contVariable = xSectContVariable[0]
+                    wrfHDL = xSectContVariable[1]
+                    xSectCont  = get_xsect(wrfHDL,
+                                           contVariable,
+                                           latBeg, lonBeg, latEnd, lonEnd)[0]
+                    con = ax.contour(xSectCont, levels=xSectContInterval, colors=xSectContColor, linewidths=xSectContLineThickness)
+        # add tick labels to y-axis
+        # NOTE: xSectShad1 and xSectShad2 should have identical vertical coordinate values, both interpolated to same pressure levels
+        yTickIndex = np.where((xSectShad1.coords['vertical'].values >= presLevMin) &
+                              (xSectShad1.coords['vertical'].values <= presLevMax))[0]
+        yTickVals = xSectShad1.coords['vertical'].values[yTickIndex]
+        ax.set_yticks(ticks=yTickIndex, labels=yTickVals * 0.01)  # tick values in hPa
+        # set y-axis limits and invert axis
+        ax.set_ylim((np.min(yTickIndex),np.max(yTickIndex)))
+        ax.invert_yaxis()
+        # add title
+        if xSectTitleStr is not None:
+            ax.set_title(xSectTitleStr + ' (' + xSectLineColor + ')')
+        else:
+            ax.set_title('cross section {:d}'.format(i) + ' (' + xSectLineColor + ')')
+        plt.colorbar(ax=ax, mappable=shd)
+        # plot SLP and thickness with SLP perturbation and cross-section line (right panel)
+        ax = fig.add_axes(rect=rightPanels[i], projection=datProj)
+        # define 2D latitude and longitude arrays from wrfHDL
+        lat2D = np.asarray(wrfHDL.variables['XLAT']).squeeze()
+        lon2D = np.asarray(wrfHDL.variables['XLONG']).squeeze()
+        # assert lon2D as 0 to 360 format
+        fix = np.where(lon2D < 0.)
+        lon2D[fix] = lon2D[fix] + 360.
         # plot slp perturbation as shading at 60% transparancy
         shd = ax.contourf(lon2D, lat2D, slpPert, slpPertInterval, cmap='seismic', extend='both',
                           alpha=0.4, transform=plotProj)
@@ -1111,6 +1336,7 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
         ax.plot((lonBeg, lonEnd), (latBeg, latEnd), transform=plotProj, color=xSectLineColor)
     # return figure handle
     return fig
+
 
 # compute_inverse_laplacian(): A function that will compute the quantity:
 #
