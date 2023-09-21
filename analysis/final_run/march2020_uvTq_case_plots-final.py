@@ -1550,7 +1550,7 @@ for fcstHr in fcstHrs:
     ax.clabel(cons[0],levels=hgtrng[::2])
 
 
-# In[5]:
+# In[20]:
 
 
 fcstHrs = [0,1,2,3,4,5,6,7,8,9,10,11,12]
@@ -1651,7 +1651,7 @@ for fcstHr in fcstHrs:
     fig
 
 
-# In[6]:
+# In[21]:
 
 
 latBegList = [32.25]
@@ -1723,7 +1723,7 @@ for fcstHr in fcstHrs:
     plt.show(fig)
 
 
-# In[7]:
+# In[22]:
 
 
 latBegList = [32.25]
@@ -1795,7 +1795,7 @@ for fcstHr in fcstHrs:
     plt.show(fig)
 
 
-# In[18]:
+# In[23]:
 
 
 for fcstHr in fcstHrs:
@@ -1888,7 +1888,7 @@ for fcstHr in fcstHrs:
     fig
 
 
-# In[19]:
+# In[24]:
 
 
 for fcstHr in fcstHrs:
@@ -1993,7 +1993,7 @@ for fcstHr in fcstHrs:
     fig
 
 
-# In[20]:
+# In[25]:
 
 
 for fcstHr in fcstHrs:
@@ -2110,7 +2110,7 @@ for fcstHr in fcstHrs:
 
 
 
-# In[64]:
+# In[26]:
 
 
 for fcstHr in [24]:
@@ -2239,16 +2239,108 @@ for fcstHr in [24]:
     fig
 
 
-# In[ ]:
+# In[32]:
+
+
+# let's linearly interpolate between 3-hr segments to produce hourly cross-section settings
+from scipy.interpolate import interp1d
+t=np.arange(0.,24.1,3.)
+latBeg3hr=np.asarray([45., 47.5, 47.5, 47.5, 45., 42.5, 40., 40., 39.])
+lonBeg3hr=np.asarray([-100., -100., -100., -100., -100., -100., -100., -100., -100.])
+latEnd3hr=np.asarray([25., 26., 27.5, 30., 32.5, 35., 37.5, 38.5, 39.])
+lonEnd3hr=np.asarray([-50., -50., -50., -50., -50., -50., -50., -50., -50.])
+f=interp1d(t,latBeg3hr)
+latBeg1hr=f(np.arange(0.,24.1,1.))
+f=interp1d(t,lonBeg3hr)
+lonBeg1hr=f(np.arange(0.,24.1,1.))
+f=interp1d(t,latEnd3hr)
+latEnd1hr=f(np.arange(0.,24.1,1.))
+f=interp1d(t,lonEnd3hr)
+lonEnd1hr=f(np.arange(0.,24.1,1.))
+
+
+# In[36]:
 
 
 
 
 
-# In[ ]:
+# In[45]:
 
 
+for fcstHr in range(25):
+    latBegList = [latBeg1hr[fcstHr].astype('float')]
+    lonBegList = [lonBeg1hr[fcstHr].astype('float')]
+    latEndList = [latEnd1hr[fcstHr].astype('float')]
+    lonEndList = [lonEnd1hr[fcstHr].astype('float')]
+    dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
+    dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
+    unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
+    ptdFileFcst = negDir + 'wrfout_d01_' + dtFcstStr
+    unpHdl = Dataset(unpFileFcst)
+    ptdHdl = Dataset(ptdFileFcst)
+    unpPvor = wrf.getvar(unpHdl,'pvo')
+    ptdPvor = wrf.getvar(ptdHdl,'pvo')
+    pvorrng = np.arange(-2.,20.1,1.)
+    xSectShadInterval = np.arange(-12., 12.1, 0.5)
+    xSectShadInterval = xSectShadInterval[np.where(xSectShadInterval != 0.)]
+    slpPertInterval = np.arange(-30.,30.1, 2.)
+    slpPertInterval = slpPertInterval[np.where(slpPertInterval != 0.)]
+    fig = cross_section_diffplot(
+                                 latBegList=latBegList,
+                                 lonBegList=lonBegList,
+                                 latEndList=latEndList,
+                                 lonEndList=lonEndList,
+                                 xSectContVariableList=[(unpPvor,unpHdl), (get_wrf_th(unpHdl),unpHdl)],
+                                 xSectContIntervalList=[pvorrng, np.arange(250., 450.1, 4.)],
+                                 xSectContColorList=['green', 'black'],
+                                 xSectContLineThicknessList=[2., 0.75],
+                                 xSectShadVariable1=(get_wrf_th(unpHdl),unpHdl),
+                                 xSectShadVariable2=(get_wrf_th(ptdHdl),ptdHdl),
+                                 xSectShadInterval=xSectShadInterval,
+                                 slp=get_wrf_slp(unpHdl),
+                                 slpInterval=np.arange(950., 1050.1, 4.),
+                                 thk=unpHgt500-unpHgt850,
+                                 thkInterval=np.arange(3700., 4500.1, 50.),
+                                 slpPert=get_wrf_slp(ptdHdl)-get_wrf_slp(unpHdl),
+                                 slpPertInterval=slpPertInterval,
+                                 datProj=datProj,
+                                 plotProj=plotProj,
+                                 presLevMin=10000.,
+                                 xSectTitleStr='pert. pot. temp'
+                                )
+    xSectShadInterval = np.arange(-5., 5.1, 0.25)
+    xSectShadInterval = xSectShadInterval[np.where(xSectShadInterval != 0.)]
+    fig = cross_section_diffplot(
+                                 latBegList=latBegList,
+                                 lonBegList=lonBegList,
+                                 latEndList=latEndList,
+                                 lonEndList=lonEndList,
+                                 xSectContVariableList=[(unpPvor,unpHdl), (get_wrf_th(unpHdl),unpHdl)],
+                                 xSectContIntervalList=[pvorrng, np.arange(250., 450.1, 4.)],
+                                 xSectContColorList=['green', 'black'],
+                                 xSectContLineThicknessList=[2., 0.75],
+                                 xSectShadVariable1=(wrf.getvar(unpHdl,'pvo'),unpHdl),
+                                 xSectShadVariable2=(wrf.getvar(ptdHdl,'pvo'),ptdHdl),
+                                 xSectShadInterval=xSectShadInterval,
+                                 slp=get_wrf_slp(unpHdl),
+                                 slpInterval=np.arange(950., 1050.1, 4.),
+                                 thk=unpHgt500-unpHgt850,
+                                 thkInterval=np.arange(3700., 4500.1, 50.),
+                                 slpPert=get_wrf_slp(ptdHdl)-get_wrf_slp(unpHdl),
+                                 slpPertInterval=slpPertInterval,
+                                 datProj=datProj,
+                                 plotProj=plotProj,
+                                 presLevMin=10000.,
+                                 xSectTitleStr='pert. PV'
+                                )
+    plt.show(fig)
 
+
+# In[42]:
+
+
+latBegList
 
 
 # In[ ]:
