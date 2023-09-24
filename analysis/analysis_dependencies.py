@@ -1479,3 +1479,95 @@ def compute_inverse_laplacian(wrfHDL, frc):
     #
     # END
     #
+
+
+# gen_time_avg: Generates an average WRF field across multiple files with selected time-stamps. Can
+#               accept a variable-name (e.g. 'QVAPOR') or a function (e.g. get_wrf_slp) to return
+#               the time-average field. Will return a numpy array for a variable, or the native format
+#               (e.g. xarray.DataArray) for a function.
+#
+# INPUTS:
+#    dataDir: directory containing input files to time-average (string, ends in '/')
+#    fileNameBeg: beginning portion of file-names to search for in dataDir (string)
+#    timeStampList: list of strings containing time-stamps of each file-name (string, probably %Y-%m-%d_%H:00:00 format)
+#    varOrFunc: either a variable-name (string) or function (function) designating data to be averaged/returned
+#
+#               *alternatively, varOrFunc can also be a tuple of the form:
+#               (<function>, <list of additional inputs to function>)
+#               in this case, the function is applied as function(hdl,*inputs)
+#
+# OUTPUTS:
+#    timeAvg: time-averaged data for selected variable or function, across all files in dataDir matching fileNameBeg*<timeStamp>*
+#
+# DEPENDENCIES:
+#    numpy
+#    xarray
+#    glob
+#    netCDF4.Dataset
+#    types
+#    analysis_dependencies.dim_coord_swap
+def gen_time_avg(dataDir, fileNameBeg, timeStampList, varOrFunc):
+    import numpy as np
+    import xarray as xr
+    from glob import glob
+    from netCDF4 import Dataset
+    import types
+    # define internal functions:
+    def ret_var(hdl,varname):
+        return np.asarray(hdl.variables[varname]).squeeze()
+    # quality-control dataDir: if it doesn't end in '/', add it to the end
+    dataDir = dataDir if dataDir[-1] == '/' else dataDir + '/'
+    # generate a file-list for all files in dataDir that start with fileNameBeg and contain a member of timeStampList
+    fileList = []
+    for timeStamp in timeStampList:
+        src = glob(dataDir + fileNameBeg + '*' + timeStamp + '*')
+        if len(src) == 0:
+            print('ERROR: No files found for ' + dataDir + fileNameBeg + '*' + timeStamp + '*' + ', ABORTING')
+            return None
+        elif len(src) > 1:
+            print('ERROR: {:d} files found for '.format(len(src)) + dataDir + fileNameBeg + '*' + timeStamp + '*' + ', ABORTING')
+            return None
+        else:
+            fileList.append(src[0])
+    numFiles = len(fileList)
+    # for each file in fileList, extract variable or apply function to construct variable
+    # variable is distinguishable from function as type(varOrFunc):
+    #    type is string: variable
+    #    type is function: function
+    hdlList = []
+    for fileName in fileList:
+        hdlList.append(Dataset(fileName))
+    # use list map() to apply
+    if type(varOrFunc) == str:
+        varList = list(map(ret_var,hdlList,[varOrFunc]*numFiles))
+        varMean = np.mean(np.asarray(varList), axis=0)
+    elif type(varOrFunc) == types.FunctionType:
+        varList = list(map(varOrFunc, hdlList))
+        varMean = np.mean(np.asarray(varList), axis=0)
+        # assert as xarray.DataArray if first element of varList is xr.core.dataarray.DataArray
+        # and borrow dimensions and coordinate values from first element
+        if type(varList[0]) == xr.core.dataarray.DataArray:
+            varMean = xr.DataArray(varMean)
+            dim_coord_swap(varMean,varList[0])
+    elif type(varOrFunc) == tuple:
+        # a tuple is assumed to be composed of the following elements:
+        #    [0]: function
+        #    [1]: list of inputs to function that follow the Dataset handle
+        #
+        # in this case, each element of the inputs list has to be expanded to its
+        # own list of len(numFiles)
+        inps = []
+        for ele in varOrFunc[1]:
+            inps.append([ele]*numFiles)
+        varList = list(map(varOrFunc[0],hdlList,*inps))
+        varMean = np.mean(np.asarray(varList), axis=0)
+        # assert as xarray.DataArray if first element of varList is xr.core.dataarray.DataArray
+        # and borrow dimensions and coordinate values from first element
+        if type(varList[0]) == xr.core.dataarray.DataArray:
+            varMean = xr.DataArray(varMean)
+            dim_coord_swap(varMean,varList[0])
+    else:
+        print('ERROR: unrecognized input for varOrFunc, ABORTING')
+        return None
+    # return varMean
+    return varMean
