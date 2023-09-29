@@ -1543,12 +1543,12 @@ def gen_time_avg(dataDir, fileNameBeg, timeStampList, varOrFunc):
         varMean = np.mean(np.asarray(varList), axis=0)
     elif type(varOrFunc) == types.FunctionType:
         varList = list(map(varOrFunc, hdlList))
-        varMean = np.mean(np.asarray(varList), axis=0)
+        varMeanNp = np.mean(np.asarray(varList), axis=0)
         # assert as xarray.DataArray if first element of varList is xr.core.dataarray.DataArray
         # and borrow dimensions and coordinate values from first element
         if type(varList[0]) == xr.core.dataarray.DataArray:
-            varMean = xr.DataArray(varMean)
-            dim_coord_swap(varMean,varList[0])
+            varMean = xr.DataArray(varMeanNp)
+            varMean = dim_coord_swap(varMean,varList[0])
     elif type(varOrFunc) == tuple:
         # a tuple is assumed to be composed of the following elements:
         #    [0]: function
@@ -1560,12 +1560,12 @@ def gen_time_avg(dataDir, fileNameBeg, timeStampList, varOrFunc):
         for ele in varOrFunc[1]:
             inps.append([ele]*numFiles)
         varList = list(map(varOrFunc[0],hdlList,*inps))
-        varMean = np.mean(np.asarray(varList), axis=0)
+        varMeanNp = np.mean(np.asarray(varList), axis=0)
         # assert as xarray.DataArray if first element of varList is xr.core.dataarray.DataArray
         # and borrow dimensions and coordinate values from first element
         if type(varList[0]) == xr.core.dataarray.DataArray:
-            varMean = xr.DataArray(varMean)
-            dim_coord_swap(varMean,varList[0])
+            varMean = xr.DataArray(varMeanNp)
+            varMean = dim_coord_swap(varMean,varList[0])
     else:
         print('ERROR: unrecognized input for varOrFunc, ABORTING')
         return None
