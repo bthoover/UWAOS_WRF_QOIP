@@ -1571,3 +1571,83 @@ def gen_time_avg(dataDir, fileNameBeg, timeStampList, varOrFunc):
         return None
     # return varMean
     return varMean
+
+
+# interpolate_sigma_levels: interpolate a 3D field from its own sigma-coordinate to a donor's
+#                           sigma-coordinate.
+#
+# INPUTS:
+#   field3D: field in native sigma-coordinate to be interpolated to donor's sigma-coordinate (*, [nz,ny,nx]-dimension)
+#   pres3D: pressure values for field3D in native sigma-coordinate (float, [nz,ny,nx]-dimension)
+#   sfcPresDonor: 2D field of surface-pressure values from donor (float, [ny,nx]-dimension)
+#   topPresDonor: donor top pressure (float, single-value)
+#   sigmaLevels: 1D vector of donor's sigma-levels to interpolate to (float, [nz]-dimension)
+#   donorHdl: netcdf4.Dataset() file-handle for donor, to extract dimension/coordinate values
+#
+# OUTPUTS:
+#   interp3D: field3D interpolated to donor's sigma-coordinate (*, [nz,ny,nx]-dimension)
+#
+# DEPENDENCIES:
+#   numpy
+#   xarray
+#   netCDF4.Dataset()
+#   wrf-python: wrf.interplevel(), wrf.getvar()
+#   analysis_dependencies.dim_coord_swap()
+#
+def interpolate_sigma_levels(field3D, pres3D, sfcPresDonor, topPresDonor, sigmaLevels, donorHdl):
+    # Some notes on the technique applied here:
+    #
+    # Sigma levels are a normalized pressure coordinate defined as:
+    #
+    # sig[k,j,i] = (p[k,j,i] - p_top) / (p_sfc[j,i] - p_top)
+    #
+    # where: p[k,j,i] is the pressure at a 3D point in [nz,ny,nx]-dimension
+    #        p_sfc[j,i] is the surface pressure at the corresponding 2D surface point in [ny,nx]-dimension
+    #        p_top is the model-top pressure, which is assumed to be a single fixed value at all [j,i] points
+    #
+    # Comparing two 3D fields on their own respective sigma coordinates does not work if the pressure field is
+    # different between them (e.g., comparing the temperature fields between an unperturbed run and a perturbed
+    # run which generate different pressure fields), because the normalization of the pressure that defines the
+    # sigma surface is computed differently for both fields, i.e. "your sig=0.5 is not the same as my sig=0.5".
+    #
+    # To do this comparison in sigma-space, one of the fields has to be interpolated onto the other field's
+    # sigma surface. This can be done by computing sig[k,j,i] for the interpolated field using it's own
+    # p[k,j,i] values, but then using the donor's p_sfc[j,i] and p_top values to do the normalization. This way,
+    # sig[k,j,i]=0.5 represents the *same* pressure value for both fields, and the two can be compared.
+    #
+    # The technique applied here is to compute the effective donor sigma-values on each level of the field
+    # to be interpolated, then to interpolate from it's own sigma-values to the donor's sigma-values. The
+    # interpolated field could intersect below-surface points (sigma>1) or above-top points (sigma<1), depending
+    # on any underlying differences in the p_sfc or p_top values between the interpolated and donor model
+    # states. These are given np.nan values.
+    #
+    # This can all be accomplished in xarray.DataArray() fields, but the interpolated field will lose its
+    # vertical dimension and coordinate names/values in the process. This metadata can all be retrieved using
+    # analysis_dependencies.dim_coord_swap().
+    import numpy as np
+    import xarray as xr
+    from wrf import interplevel
+    from wrf import getvar
+    from netCDF4 import Dataset
+    # compute sig3D as the interpolated field's pres3D normalized by sfcPresDonor and topPresDonor
+    #   Assuming that pres3D is [nz,ny,nx]-dimension and sfcPresDonor is [ny,nx]-dimension, this operation
+    #   should be broadcastable by numpy rules, with the denominator being left-padded as [1,ny,nx]-dimension
+    #   and then applied across all nz-dimension levels. If this is not the case, you will probably get an
+    #   error of the form "cannot be broadcast".
+    sig3D = np.divide(pres3D - topPresDonor, sfcPresDonor - topPresDonor)
+    # interpolate field3D on sig3D surfaces to donor's standard sigma-levels in sigmaLevels, with any
+    # points that are not interperable assigned to np.nan
+    interp3D = wrf.interplevel(field3d=field3D,
+                               vert=sig3D,
+                               desiredlev=sigmaLevels,
+                               missing=np.nan,
+                               meta=True)  # meta=True will default to returning an xarray.DataArray() with
+                                           # metadata (dimension and coordinate names/values) intact, rather
+                                           # than a numpy array, if possible
+    # if interp3D is an xarray.DataArray() object, the metadata is retained with the exception of the vertical
+    # coordinate, in which case perform dim_coord_swap() on donor's pressure field to retain metadata
+    if type(interp3D) == xr.core.dataarray.DataArray:
+        presDonor = getvar(donorHdl, 'p')
+        interp3D = dim_coord_swap(interp3D, presDonor)
+    # return interp3D
+    return interp3D
