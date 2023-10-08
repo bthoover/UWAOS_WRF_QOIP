@@ -20,6 +20,8 @@ from analysis_dependencies import compute_inverse_laplacian
 from analysis_dependencies import plan_section_plot
 from analysis_dependencies import cross_section_plot
 from analysis_dependencies import cross_section_diffplot
+from analysis_dependencies import gen_time_avg
+from analysis_dependencies import interpolate_sigma_levels
 import datetime
 import wrf
 import cartopy
@@ -36,7 +38,10 @@ import xarray as xr
 unpDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/final_runs/march2020/R_mu/unperturbed/'
 negDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/final_runs/march2020/R_mu/negative/uvTq/ptdi14/'
 posDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/final_runs/march2020/R_mu/positive/uvTq/ptdi22/'
+d10Dir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/final_runs/march2020/10day_files/'
 dtInit = datetime.datetime(2020, 3, 6, 12)
+dtAvgBeg = datetime.datetime(2020, 3, 2, 12)
+dtAvgEnd = datetime.datetime(2020, 3, 12, 12)
 
 
 # In[3]:
@@ -49,6 +54,12 @@ dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
 unpWRFInputFile = unpDir + 'wrfinput_d01'
 negWRFInputFile = negDir + 'wrfinput_d01'
 posWRFInputFile = posDir + 'wrfinput_d01'
+avgFileNameBeg = 'wrfinput_d01_'
+avgTimeStamps = []
+dt = dtAvgBeg
+while dt <= dtAvgEnd:
+    avgTimeStamps.append(datetime.datetime.strftime(dt,'%Y-%m-%d_%H:00:00'))
+    dt = dt + datetime.timedelta(hours=6)
 unpFileInit = unpDir + 'wrfout_d01_' + dtInitStr
 negFileInit = negDir + 'wrfout_d01_' + dtInitStr
 posFileInit = posDir + 'wrfout_d01_' + dtInitStr
@@ -2110,7 +2121,7 @@ for fcstHr in fcstHrs:
 
 
 
-# In[75]:
+# In[26]:
 
 
 for fcstHr in [24]:
@@ -2239,7 +2250,7 @@ for fcstHr in [24]:
     fig
 
 
-# In[76]:
+# In[27]:
 
 
 # let's linearly interpolate between 3-hr segments to produce hourly cross-section settings
@@ -2259,10 +2270,12 @@ f=interp1d(t,lonEnd3hr)
 lonEnd1hr=f(np.arange(0.,24.1,1.))
 
 
-# In[77]:
+# In[140]:
 
 
-for fcstHr in range(25):
+th_avg = gen_time_avg(d10Dir, avgFileNameBeg, avgTimeStamps, (get_wrf_th))
+p_avg = gen_time_avg(d10Dir, avgFileNameBeg, avgTimeStamps, (wrf.getvar, ['p']))
+for fcstHr in [12]:
     latBegList = [latBeg1hr[fcstHr].astype('float')]
     lonBegList = [lonBeg1hr[fcstHr].astype('float')]
     latEndList = [latEnd1hr[fcstHr].astype('float')]
@@ -2275,8 +2288,26 @@ for fcstHr in range(25):
     ptdHdl = Dataset(ptdFileFcst)
     unpPvor = wrf.getvar(unpHdl,'pvo')
     ptdPvor = wrf.getvar(ptdHdl,'pvo')
-    pvorrng = np.arange(-2.,20.1,1.)
-    xSectShadInterval = np.arange(-12., 12.1, 0.5)
+    u,v = get_uvmet(unpHdl)
+    unpSpd = np.sqrt(u**2. + v**2.)
+    unpHgt = wrf.getvar(unpHdl,'z')
+    u,v = get_uvmet(ptdHdl)
+    ptdSpd = np.sqrt(u**2. + v**2.)
+    ptdHgt = wrf.getvar(ptdHdl,'z')
+    p = wrf.getvar(ptdHdl,'p')
+    ps = np.asarray(unpHdl.variables['PSFC']).squeeze()
+    pt = np.asarray(unpHdl.variables['P_TOP']) * 1.0
+    s = np.asarray(unpHdl.variables['ZNU']).squeeze()
+    ptdSpd_int = interpolate_sigma_levels(ptdSpd, p, ps, pt, s, unpHdl)
+    ptdHgt_int = interpolate_sigma_levels(ptdHgt, p, ps, pt, s, unpHdl)
+    hgtrng = np.arange(-60., 60.1, 8.)
+    hgtrng = hgtrng[np.where(hgtrng != 0.)]
+    pvorrng = [2.]
+    ps = np.asarray(unpHdl.variables['PSFC']).squeeze()
+    pt = np.asarray(unpHdl.variables['P_TOP']) * 1.0
+    s = np.asarray(unpHdl.variables['ZNU']).squeeze()
+    th_avg_int = interpolate_sigma_levels(th_avg, p_avg, ps, pt, s, unpHdl)
+    xSectShadInterval = np.arange(-4., 4.1, 0.25)
     xSectShadInterval = xSectShadInterval[np.where(xSectShadInterval != 0.)]
     slpPertInterval = np.arange(-30.,30.1, 2.)
     slpPertInterval = slpPertInterval[np.where(slpPertInterval != 0.)]
@@ -2285,12 +2316,12 @@ for fcstHr in range(25):
                                  lonBegList=lonBegList,
                                  latEndList=latEndList,
                                  lonEndList=lonEndList,
-                                 xSectContVariableList=[(unpPvor,unpHdl), (get_wrf_th(unpHdl),unpHdl)],
-                                 xSectContIntervalList=[pvorrng, np.arange(250., 450.1, 4.)],
-                                 xSectContColorList=['green', 'black'],
-                                 xSectContLineThicknessList=[2., 0.75],
-                                 xSectShadVariable1=(get_wrf_th(unpHdl),unpHdl),
-                                 xSectShadVariable2=(get_wrf_th(ptdHdl),ptdHdl),
+                                 xSectContVariableList=[(unpPvor,unpHdl), (ptdPvor,ptdHdl), (ptdHgt_int-unpHgt,unpHdl)],
+                                 xSectContIntervalList=[pvorrng, pvorrng, hgtrng],
+                                 xSectContColorList=['green', 'red','black'],
+                                 xSectContLineThicknessList=[2., 2., 0.75],
+                                 xSectShadVariable1=(wrf.getvar(unpHdl,'pvo'),unpHdl),  #(get_wrf_th(unpHdl),unpHdl),
+                                 xSectShadVariable2=(wrf.getvar(ptdHdl,'pvo'),ptdHdl),  #get_wrf_th(ptdHdl),ptdHdl),
                                  xSectShadInterval=xSectShadInterval,
                                  slp=get_wrf_slp(unpHdl),
                                  slpInterval=np.arange(950., 1050.1, 4.),
@@ -2303,32 +2334,311 @@ for fcstHr in range(25):
                                  presLevMin=10000.,
                                  xSectTitleStr='pert. pot. temp'
                                 )
-    xSectShadInterval = np.arange(-5., 5.1, 0.25)
+    #xSectShadInterval = np.arange(-5., 5.1, 0.25)
+    #xSectShadInterval = xSectShadInterval[np.where(xSectShadInterval != 0.)]
+    #fig = cross_section_diffplot(
+    #                             latBegList=latBegList,
+    #                             lonBegList=lonBegList,
+    #                             latEndList=latEndList,
+    #                             lonEndList=lonEndList,
+    #                             xSectContVariableList=[(unpPvor,unpHdl), (ptdPvor,ptdHdl), (get_wrf_th(unpHdl)-th_avg_int,unpHdl)],
+    #                             xSectContIntervalList=[pvorrng, pvorrng, np.arange(-20., 20.1, 2.)],
+    #                             xSectContColorList=['green', 'red', 'black'],
+    #                             xSectContLineThicknessList=[2., 2., 0.75],
+    #                             xSectShadVariable1=(wrf.getvar(unpHdl,'pvo'),unpHdl),
+    #                             xSectShadVariable2=(wrf.getvar(ptdHdl,'pvo'),ptdHdl),
+    #                             xSectShadInterval=xSectShadInterval,
+    #                             slp=get_wrf_slp(unpHdl),
+    #                             slpInterval=np.arange(950., 1050.1, 4.),
+    #                             thk=unpHgt500-unpHgt850,
+    #                             thkInterval=np.arange(3700., 4500.1, 50.),
+    #                             slpPert=get_wrf_slp(ptdHdl)-get_wrf_slp(unpHdl),
+    #                             slpPertInterval=slpPertInterval,
+    #                             datProj=datProj,
+    #                             plotProj=plotProj,
+    #                             presLevMin=10000.,
+    #                             xSectTitleStr='pert. PV'
+    #                            )
+    print('hour {:d}'.format(fcstHr))
+    plt.show(fig)
+
+
+# In[176]:
+
+
+th_avg = gen_time_avg(d10Dir, avgFileNameBeg, avgTimeStamps, (get_wrf_th))
+p_avg = gen_time_avg(d10Dir, avgFileNameBeg, avgTimeStamps, (wrf.getvar, ['p']))
+for fcstHr in [18]:
+    latBegList = [latBeg1hr[fcstHr].astype('float') +1.]
+    lonBegList = [lonBeg1hr[fcstHr].astype('float')]
+    latEndList = [latEnd1hr[fcstHr].astype('float') +1.]
+    lonEndList = [lonEnd1hr[fcstHr].astype('float')]
+    dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
+    dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
+    unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
+    ptdFileFcst = posDir + 'wrfout_d01_' + dtFcstStr
+    unpHdl = Dataset(unpFileFcst)
+    ptdHdl = Dataset(ptdFileFcst)
+    unpPvor = wrf.getvar(unpHdl,'pvo')
+    ptdPvor = wrf.getvar(ptdHdl,'pvo')
+    u,v = get_uvmet(unpHdl)
+    unpSpd = np.sqrt(u**2. + v**2.)
+    unpHgt = wrf.getvar(unpHdl,'z')
+    u,v = get_uvmet(ptdHdl)
+    ptdSpd = np.sqrt(u**2. + v**2.)
+    ptdHgt = wrf.getvar(ptdHdl,'z')
+    p = wrf.getvar(ptdHdl,'p')
+    ps = np.asarray(unpHdl.variables['PSFC']).squeeze()
+    pt = np.asarray(unpHdl.variables['P_TOP']) * 1.0
+    s = np.asarray(unpHdl.variables['ZNU']).squeeze()
+    ptdSpd_int = interpolate_sigma_levels(ptdSpd, p, ps, pt, s, unpHdl)
+    ptdHgt_int = interpolate_sigma_levels(ptdHgt, p, ps, pt, s, unpHdl)
+    ptdPvor_int = interpolate_sigma_levels(ptdPvor, p, ps, pt, s, unpHdl)
+    hgtrng = np.arange(-60., 60.1, 8.)
+    hgtrng = hgtrng[np.where(hgtrng != 0.)]
+    spdrng = np.arange(35.,100.,5.)
+    pvorrng = [2.]
+    ps = np.asarray(unpHdl.variables['PSFC']).squeeze()
+    pt = np.asarray(unpHdl.variables['P_TOP']) * 1.0
+    s = np.asarray(unpHdl.variables['ZNU']).squeeze()
+    th_avg_int = interpolate_sigma_levels(th_avg, p_avg, ps, pt, s, unpHdl)
+    xSectShadInterval = np.arange(-4., 4.1, 0.25)
     xSectShadInterval = xSectShadInterval[np.where(xSectShadInterval != 0.)]
-    fig = cross_section_diffplot(
+    slpPertInterval = np.arange(-30.,30.1, 2.)
+    slpPertInterval = slpPertInterval[np.where(slpPertInterval != 0.)]
+    fig = cross_section_plot(
+                                 wrfHDL=unpHdl,
                                  latBegList=latBegList,
                                  lonBegList=lonBegList,
                                  latEndList=latEndList,
                                  lonEndList=lonEndList,
-                                 xSectContVariableList=[(unpPvor,unpHdl), (get_wrf_th(unpHdl),unpHdl)],
-                                 xSectContIntervalList=[pvorrng, np.arange(250., 450.1, 4.)],
-                                 xSectContColorList=['green', 'black'],
-                                 xSectContLineThicknessList=[2., 0.75],
-                                 xSectShadVariable1=(wrf.getvar(unpHdl,'pvo'),unpHdl),
-                                 xSectShadVariable2=(wrf.getvar(ptdHdl,'pvo'),ptdHdl),
+                                 xSectContVariableList=[unpPvor, ptdPvor_int, ptdHgt_int-unpHgt],
+                                 xSectContIntervalList=[pvorrng, pvorrng, hgtrng],
+                                 xSectContColorList=['lime', 'gold','black'],
+                                 xSectContLineThicknessList=[2., 2., 0.75],
+                                 xSectShadVariable=ptdPvor_int-unpPvor,  #(get_wrf_th(unpHdl),unpHdl),
                                  xSectShadInterval=xSectShadInterval,
                                  slp=get_wrf_slp(unpHdl),
                                  slpInterval=np.arange(950., 1050.1, 4.),
                                  thk=unpHgt500-unpHgt850,
                                  thkInterval=np.arange(3700., 4500.1, 50.),
-                                 slpPert=get_wrf_slp(ptdHdl)-get_wrf_slp(unpHdl),
-                                 slpPertInterval=slpPertInterval,
+                                 datProj=datProj,
+                                 plotProj=plotProj,
+                                 presLevMin=10000.,
+                                 xSectTitleStr='pert. pot. temp'
+                                )
+    xSectShadInterval = np.arange(-10., 10.1, 1.0)
+    xSectShadInterval = xSectShadInterval[np.where(xSectShadInterval != 0.)]
+    fig = cross_section_plot(
+                                 wrfHDL=unpHdl,
+                                 latBegList=latBegList,
+                                 lonBegList=lonBegList,
+                                 latEndList=latEndList,
+                                 lonEndList=lonEndList,
+                                 xSectContVariableList=[unpPvor, ptdPvor_int, unpSpd, ptdSpd_int],
+                                 xSectContIntervalList=[[2.], [2.], spdrng, spdrng],
+                                 xSectContColorList=['lime', 'gold', 'blue', 'red'],
+                                 xSectContLineThicknessList=[2., 2., 1., 1.],
+                                 xSectShadVariable=ptdPvor_int-unpPvor,  #(get_wrf_th(unpHdl),unpHdl),
+                                 xSectShadInterval=xSectShadInterval,
+                                 slp=get_wrf_slp(unpHdl),
+                                 slpInterval=np.arange(950., 1050.1, 4.),
+                                 thk=unpHgt500-unpHgt850,
+                                 thkInterval=np.arange(3700., 4500.1, 50.),
                                  datProj=datProj,
                                  plotProj=plotProj,
                                  presLevMin=10000.,
                                  xSectTitleStr='pert. PV'
                                 )
+    print('hour {:d}'.format(fcstHr))
     plt.show(fig)
+
+
+# In[177]:
+
+
+th_avg = gen_time_avg(d10Dir, avgFileNameBeg, avgTimeStamps, (get_wrf_th))
+p_avg = gen_time_avg(d10Dir, avgFileNameBeg, avgTimeStamps, (wrf.getvar, ['p']))
+for fcstHr in [18]:
+    latBegList = [latBeg1hr[fcstHr].astype('float') +1.]
+    lonBegList = [lonBeg1hr[fcstHr].astype('float')]
+    latEndList = [latEnd1hr[fcstHr].astype('float') +1.]
+    lonEndList = [lonEnd1hr[fcstHr].astype('float')]
+    dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
+    dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
+    unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
+    ptdFileFcst = negDir + 'wrfout_d01_' + dtFcstStr
+    unpHdl = Dataset(unpFileFcst)
+    ptdHdl = Dataset(ptdFileFcst)
+    unpPvor = wrf.getvar(unpHdl,'pvo')
+    ptdPvor = wrf.getvar(ptdHdl,'pvo')
+    u,v = get_uvmet(unpHdl)
+    unpSpd = np.sqrt(u**2. + v**2.)
+    unpHgt = wrf.getvar(unpHdl,'z')
+    u,v = get_uvmet(ptdHdl)
+    ptdSpd = np.sqrt(u**2. + v**2.)
+    ptdHgt = wrf.getvar(ptdHdl,'z')
+    p = wrf.getvar(ptdHdl,'p')
+    ps = np.asarray(unpHdl.variables['PSFC']).squeeze()
+    pt = np.asarray(unpHdl.variables['P_TOP']) * 1.0
+    s = np.asarray(unpHdl.variables['ZNU']).squeeze()
+    ptdSpd_int = interpolate_sigma_levels(ptdSpd, p, ps, pt, s, unpHdl)
+    ptdHgt_int = interpolate_sigma_levels(ptdHgt, p, ps, pt, s, unpHdl)
+    ptdPvor_int = interpolate_sigma_levels(ptdPvor, p, ps, pt, s, unpHdl)
+    hgtrng = np.arange(-60., 60.1, 8.)
+    hgtrng = hgtrng[np.where(hgtrng != 0.)]
+    spdrng = np.arange(35.,100.,5.)
+    pvorrng = [2.]
+    ps = np.asarray(unpHdl.variables['PSFC']).squeeze()
+    pt = np.asarray(unpHdl.variables['P_TOP']) * 1.0
+    s = np.asarray(unpHdl.variables['ZNU']).squeeze()
+    th_avg_int = interpolate_sigma_levels(th_avg, p_avg, ps, pt, s, unpHdl)
+    xSectShadInterval = np.arange(-4., 4.1, 0.25)
+    xSectShadInterval = xSectShadInterval[np.where(xSectShadInterval != 0.)]
+    slpPertInterval = np.arange(-30.,30.1, 2.)
+    slpPertInterval = slpPertInterval[np.where(slpPertInterval != 0.)]
+    fig = cross_section_plot(
+                                 wrfHDL=unpHdl,
+                                 latBegList=latBegList,
+                                 lonBegList=lonBegList,
+                                 latEndList=latEndList,
+                                 lonEndList=lonEndList,
+                                 xSectContVariableList=[unpPvor, ptdPvor_int, ptdHgt_int-unpHgt],
+                                 xSectContIntervalList=[pvorrng, pvorrng, hgtrng],
+                                 xSectContColorList=['lime', 'gold','black'],
+                                 xSectContLineThicknessList=[2., 2., 0.75],
+                                 xSectShadVariable=ptdPvor_int-unpPvor,  #(get_wrf_th(unpHdl),unpHdl),
+                                 xSectShadInterval=xSectShadInterval,
+                                 slp=get_wrf_slp(unpHdl),
+                                 slpInterval=np.arange(950., 1050.1, 4.),
+                                 thk=unpHgt500-unpHgt850,
+                                 thkInterval=np.arange(3700., 4500.1, 50.),
+                                 datProj=datProj,
+                                 plotProj=plotProj,
+                                 presLevMin=10000.,
+                                 xSectTitleStr='pert. pot. temp'
+                                )
+    xSectShadInterval = np.arange(-10., 10.1, 1.0)
+    xSectShadInterval = xSectShadInterval[np.where(xSectShadInterval != 0.)]
+    fig = cross_section_plot(
+                                 wrfHDL=unpHdl,
+                                 latBegList=latBegList,
+                                 lonBegList=lonBegList,
+                                 latEndList=latEndList,
+                                 lonEndList=lonEndList,
+                                 xSectContVariableList=[unpPvor, ptdPvor_int, unpSpd, ptdSpd_int],
+                                 xSectContIntervalList=[[2.], [2.], spdrng, spdrng],
+                                 xSectContColorList=['lime', 'gold', 'blue', 'red'],
+                                 xSectContLineThicknessList=[2., 2., 1., 1.],
+                                 xSectShadVariable=ptdPvor_int-unpPvor,  #(get_wrf_th(unpHdl),unpHdl),
+                                 xSectShadInterval=xSectShadInterval,
+                                 slp=get_wrf_slp(unpHdl),
+                                 slpInterval=np.arange(950., 1050.1, 4.),
+                                 thk=unpHgt500-unpHgt850,
+                                 thkInterval=np.arange(3700., 4500.1, 50.),
+                                 datProj=datProj,
+                                 plotProj=plotProj,
+                                 presLevMin=10000.,
+                                 xSectTitleStr='pert. PV'
+                                )
+    print('hour {:d}'.format(fcstHr))
+    plt.show(fig)
+
+
+# In[ ]:
+
+
+# First crack at an explanation for the March 2020 bomb cyclone case:
+#
+# The cross-sections are demonstrating that the majority of the influences on the cyclone's intensity are related
+# to perturbations that evolve DOWNSTREAM rather than upstream of the cyclone, which modify the intensity and extent
+# west-east of the SUBTROPICAL JET rather than the polar jet. In the weakening case, a dynamic tropopause fold
+# downstream of the cyclone is pushed further downstream, which inhibits the westward extent of the subtrop. jet and
+# reduces jet interaction. In the intensifying case, this dyn. trop. fold is eradicated entirely, allowing the
+# subtrop. jet to extend upstream and increase jet interaction with the cyclone. These appear to be NONLINEAR
+# results, as the intensifying case's dyn. trop. evolves very differently (not just reversed) from the weakening
+# case in this key region.
+
+
+# In[156]:
+
+
+pv_avg = gen_time_avg(d10Dir, avgFileNameBeg, avgTimeStamps, (wrf.getvar, ['pvo']))
+p_avg = gen_time_avg(d10Dir, avgFileNameBeg, avgTimeStamps, (wrf.getvar, ['p']))
+for fcstHr in [18]:
+    latBeg = latBeg1hr[fcstHr].astype('float') + 1.
+    lonBeg = lonBeg1hr[fcstHr].astype('float')
+    latEnd = latEnd1hr[fcstHr].astype('float') + 1.
+    lonEnd = lonEnd1hr[fcstHr].astype('float')
+    dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
+    dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
+    unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
+    ptdFileFcst = negDir + 'wrfout_d01_' + dtFcstStr
+    unpHdl = Dataset(unpFileFcst)
+    ptdHdl = Dataset(ptdFileFcst)
+    unpPvor = wrf.getvar(unpHdl,'pvo')
+    ptdPvor = wrf.getvar(ptdHdl,'pvo')
+    prs = np.asarray(wrf.getvar(unpHdl,'p')).squeeze()
+    unpPvor350 = wrf.interplevel(field3d=unpPvor,
+                                vert=prs,
+                                desiredlev=35000.,
+                                missing=np.nan,
+                                squeeze=True,
+                                meta=False)
+    prs = np.asarray(wrf.getvar(ptdHdl,'p')).squeeze()
+    ptdPvor350 = wrf.interplevel(field3d=ptdPvor,
+                                vert=prs,
+                                desiredlev=35000.,
+                                missing=np.nan,
+                                squeeze=True,
+                                meta=False)
+    avgPvor350 = wrf.interplevel(field3d=pv_avg,
+                                vert=p_avg,
+                                desiredlev=35000.,
+                                missing=np.nan,
+                                squeeze=True,
+                                meta=False)
+    # plan-section figure: 350 hpa PV spaghetti plots
+
+    shdrng =  np.arange(-4.,4.01,0.25).astype('float')
+    mask = np.ones((np.shape(shdrng)),dtype='bool')
+    mask[np.where(shdrng==0.)] = False
+    hgtrng = np.arange(7400.,8800.1,45.)
+
+
+    fig, ax = plt.subplots(ncols=1,nrows=1,figsize=(12,7), subplot_kw={'projection' : datProj})
+
+    ax, (shd, cons, vec) = plan_section_plot(wrfHDL=unpHdl,
+                                            lat=lat,
+                                            lon=lon,
+                                            contVariableList=[unpPvor350, get_wrf_slp(unpHdl), get_wrf_slp(ptdHdl)],
+                                            contIntervalList=[np.arange(1.,8.1,2.),np.arange(900.,1008.1,6.),np.arange(900.,1008.1,6.)], 
+                                            contColorList=['black','green','purple'],
+                                            contLineThicknessList=[1.0,1.0,1.0],
+                                            shadVariable=ptdPvor350-unpPvor350,
+                                            shadInterval=shdrng[mask],
+                                            shadAlpha=0.6,
+                                            datProj=datProj,
+                                            plotProj=plotProj,
+                                            shadCmap='seismic',
+                                            uVecVariable=None,
+                                            vVecVariable=None,
+                                            vectorThinning=10,
+                                            vecColor='#35821b',
+                                            vectorScale=30,
+                                            figax=ax)
+    # add a title
+    ax.set_title(dtFcstStr + ' ({:d} hrs) 350 hPa perturbation PV'.format(fcstHr))
+    fig.gca().plot(lonBeg,latBeg,'o',transform=plotProj,color='magenta')
+    fig.gca().plot(lonEnd,latEnd,'o',transform=plotProj,color='magenta')
+    fig.gca().plot((lonBeg,lonEnd),(latBeg,latEnd),transform=plotProj,color='magenta')
+    fig
+
+
+# In[87]:
+
+
+shdrng
 
 
 # In[ ]:
@@ -2337,19 +2647,50 @@ for fcstHr in range(25):
 
 
 
-# In[79]:
+# In[ ]:
 
 
-th_mean = 0. * get_wrf_th(unpHdl)
-for fcstHr in range(25):
-    dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
-    dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
-    unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
-    unpHdl = Dataset(unpFileFcst)
-    th_mean = th_mean + get_wrf_th(unpHdl)/25.
 
 
-# In[83]:
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
+
+
+# In[29]:
+
+
+th_avg = gen_time_avg(d10Dir, avgFileNameBeg, avgTimeStamps, (get_wrf_th))
+p_avg = gen_time_avg(d10Dir, avgFileNameBeg, avgTimeStamps, (wrf.getvar, ['p']))
+
+
+# In[30]:
 
 
 xSectShadInterval = np.arange(-12., 12.1, 0.5)
@@ -2361,8 +2702,8 @@ fig = cross_section_diffplot(
                                  lonBegList=lonBegList,
                                  latEndList=latEndList,
                                  lonEndList=lonEndList,
-                                 xSectContVariableList=[(unpPvor,unpHdl), (get_wrf_th(unpHdl)-th_mean,unpHdl)],
-                                 xSectContIntervalList=[pvorrng, np.arange(-10., 10.1, 1.)],
+                                 xSectContVariableList=[(unpPvor,unpHdl), (get_wrf_th(unpHdl)-th_avg,unpHdl)],
+                                 xSectContIntervalList=[pvorrng, np.arange(-30., 30.1, 4.)],
                                  xSectContColorList=['green', 'black'],
                                  xSectContLineThicknessList=[2., 0.75],
                                  xSectShadVariable1=(get_wrf_th(unpHdl),unpHdl),
@@ -2381,22 +2722,147 @@ fig = cross_section_diffplot(
                                 )
 
 
-# In[ ]:
+# In[43]:
 
 
+from analysis_dependencies import dim_coord_swap
+# interpolate_sigma_levels: interpolate a 3D field from its own sigma-coordinate to a donor's
+#                           sigma-coordinate.
+#
+# INPUTS:
+#   field3D: field in native sigma-coordinate to be interpolated to donor's sigma-coordinate (*, [nz,ny,nx]-dimension)
+#   pres3D: pressure values for field3D in native sigma-coordinate (float, [nz,ny,nx]-dimension)
+#   sfcPresDonor: 2D field of surface-pressure values from donor (float, [ny,nx]-dimension)
+#   topPresDonor: donor top pressure (float, single-value)
+#   sigmaLevels: 1D vector of donor's sigma-levels to interpolate to (float, [nz]-dimension)
+#   donorHdl: netcdf4.Dataset() file-handle for donor, to extract dimension/coordinate values
+#
+# OUTPUTS:
+#   interp3D: field3D interpolated to donor's sigma-coordinate (*, [nz,ny,nx]-dimension)
+#
+# DEPENDENCIES:
+#   numpy
+#   xarray
+#   netCDF4.Dataset()
+#   wrf-python: wrf.interplevel(), wrf.getvar()
+#   analysis_dependencies.dim_coord_swap()
+#
+def interpolate_sigma_levels(field3D, pres3D, sfcPresDonor, topPresDonor, sigmaLevels, donorHdl):
+    # Some notes on the technique applied here:
+    #
+    # Sigma levels are a normalized pressure coordinate defined as:
+    #
+    # sig[k,j,i] = (p[k,j,i] - p_top) / (p_sfc[j,i] - p_top)
+    #
+    # where: p[k,j,i] is the pressure at a 3D point in [nz,ny,nx]-dimension
+    #        p_sfc[j,i] is the surface pressure at the corresponding 2D surface point in [ny,nx]-dimension
+    #        p_top is the model-top pressure, which is assumed to be a single fixed value at all [j,i] points
+    #
+    # Comparing two 3D fields on their own respective sigma coordinates does not work if the pressure field is
+    # different between them (e.g., comparing the temperature fields between an unperturbed run and a perturbed
+    # run which generate different pressure fields), because the normalization of the pressure that defines the
+    # sigma surface is computed differently for both fields, i.e. "your sig=0.5 is not the same as my sig=0.5".
+    #
+    # To do this comparison in sigma-space, one of the fields has to be interpolated onto the other field's
+    # sigma surface. This can be done by computing sig[k,j,i] for the interpolated field using it's own
+    # p[k,j,i] values, but then using the donor's p_sfc[j,i] and p_top values to do the normalization. This way,
+    # sig[k,j,i]=0.5 represents the *same* pressure value for both fields, and the two can be compared.
+    #
+    # The technique applied here is to compute the effective donor sigma-values on each level of the field
+    # to be interpolated, then to interpolate from it's own sigma-values to the donor's sigma-values. The
+    # interpolated field could intersect below-surface points (sigma>1) or above-top points (sigma<1), depending
+    # on any underlying differences in the p_sfc or p_top values between the interpolated and donor model
+    # states. These are given np.nan values.
+    #
+    # This can all be accomplished in xarray.DataArray() fields, but the interpolated field will lose its
+    # vertical dimension and coordinate names/values in the process. This metadata can all be retrieved using
+    # analysis_dependencies.dim_coord_swap().
+    import numpy as np
+    import xarray as xr
+    from wrf import interplevel
+    from wrf import getvar
+    from netCDF4 import Dataset
+    # compute sig3D as the interpolated field's pres3D normalized by sfcPresDonor and topPresDonor
+    #   Assuming that pres3D is [nz,ny,nx]-dimension and sfcPresDonor is [ny,nx]-dimension, this operation
+    #   should be broadcastable by numpy rules, with the denominator being left-padded as [1,ny,nx]-dimension
+    #   and then applied across all nz-dimension levels. If this is not the case, you will probably get an
+    #   error of the form "cannot be broadcast".
+    sig3D = np.divide(pres3D - topPresDonor, sfcPresDonor - topPresDonor)
+    # interpolate field3D on sig3D surfaces to donor's standard sigma-levels in sigmaLevels, with any
+    # points that are not interperable assigned to np.nan
+    interp3D = wrf.interplevel(field3d=field3D,
+                               vert=sig3D,
+                               desiredlev=sigmaLevels,
+                               missing=np.nan,
+                               meta=False) # meta=True will default to returning an xarray.DataArray() with
+                                           # metadata (dimension and coordinate names/values) intact, rather
+                                           # than a numpy array, if possible
+    # if interp3D is an xarray.DataArray() object, the metadata is retained with the exception of the vertical
+    # coordinate, in which case perform dim_coord_swap() on donor's pressure field to retain metadata
+    presDonor = getvar(donorHdl, 'p')
+    if type(interp3D) == xr.core.dataarray.DataArray:
+        interp3D = dim_coord_swap(interp3D, presDonor)
+    else:
+        interp3D = xr.DataArray(interp3D)
+        interp3D = dim_coord_swap(interp3D, presDonor)
+    # return interp3D
+    return interp3D
+        
 
 
-
-# In[ ]:
-
+# In[44]:
 
 
+th = th_avg
+p = p_avg
+ps = np.asarray(unpHdlFcst.variables['PSFC']).squeeze()
+pt = np.asarray(unpHdlFcst.variables['P_TOP']) * 1.0
+s = np.asarray(unpHdlFcst.variables['ZNU']).squeeze()
+th_avg_int = interpolate_sigma_levels(th, p, ps, pt, s, unpHdlFcst)
 
 
-# In[ ]:
+# In[48]:
 
 
+xSectShadInterval = np.arange(-12., 12.1, 0.5)
+xSectShadInterval = xSectShadInterval[np.where(xSectShadInterval != 0.)]
+slpPertInterval = np.arange(-30.,30.1, 2.)
+slpPertInterval = slpPertInterval[np.where(slpPertInterval != 0.)]
+fig = cross_section_diffplot(
+                                 latBegList=latBegList,
+                                 lonBegList=lonBegList,
+                                 latEndList=latEndList,
+                                 lonEndList=lonEndList,
+                                 xSectContVariableList=[(unpPvor,unpHdl), (get_wrf_th(unpHdl)-th_avg_int,unpHdl)],
+                                 xSectContIntervalList=[[2.], np.arange(-20., 20.1, 2.)],
+                                 xSectContColorList=['green', 'black'],
+                                 xSectContLineThicknessList=[2., 0.75],
+                                 xSectShadVariable1=(get_wrf_th(unpHdl),unpHdl),
+                                 xSectShadVariable2=(get_wrf_th(ptdHdl),ptdHdl),
+                                 xSectShadInterval=xSectShadInterval,
+                                 slp=get_wrf_slp(unpHdl),
+                                 slpInterval=np.arange(950., 1050.1, 4.),
+                                 thk=unpHgt500-unpHgt850,
+                                 thkInterval=np.arange(3700., 4500.1, 50.),
+                                 slpPert=get_wrf_slp(ptdHdl)-get_wrf_slp(unpHdl),
+                                 slpPertInterval=slpPertInterval,
+                                 datProj=datProj,
+                                 plotProj=plotProj,
+                                 presLevMin=10000.,
+                                 xSectTitleStr='pert. pot. temp'
+                                )
 
+
+# In[35]:
+
+
+th_avg
+
+
+# In[39]:
+
+
+th
 
 
 # In[ ]:
