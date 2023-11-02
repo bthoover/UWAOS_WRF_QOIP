@@ -502,6 +502,68 @@ def get_wrf_kinematic(wrfHDL, kinName):
         print(kinName + ' not in kinematics list: vor, div, str, shr')
         return None
 
+# get_wrf_grad: given the netCDF4.Dataset() file handle of a WRF file and a scalar variable (V), return 
+#               the gradients dV/dx, dV,dy. Returns an xarray.DataArray() object with appropriate
+#               dimension-names and coordinate varibles borrowed from pressure.
+#
+# INPUTS:
+#
+# wrfHDL: netCDF4.Dataset() file handle of WRF file
+# var: 3D scalar variable to compute gradient from
+#
+# OUTPUTS:
+#
+# dVdx: gradient in x-direction
+# dVdy: gradient in y-direction
+#
+# DEPENDENCIES:
+#
+# numpy
+# xarray
+# wrf-python
+# analysis_dependencies.dim_coord_swap()
+# analysis_dependencies.get_uvmet()
+def get_wrf_grad(wrfHDL, var):
+    import numpy as np
+    import xarray as xr
+    import wrf
+    
+    # define map-factors on mass-points
+    mf = wrfHDL.variables['MAPFAC_M']
+    # define dx, dy as [nlat,nlon] grids normalized by mf
+    dx = wrfHDL.DX*np.power(mf, -1.)
+    dy = wrfHDL.DY*np.power(mf, -1.)
+    # assert numpy-array versions of dx, dy, var
+    dxg = np.asarray(dx).squeeze()
+    dyg = np.asarray(dy).squeeze()
+    varg = np.asarray(var).squeeze()
+    # generate NaN-type dVdx, dVdy arrays
+    dVdx = np.nan * np.ones(np.shape(varg))
+    dVdy = np.nan * np.ones(np.shape(varg))
+    # loop through levels [nz,ny,nx], calculate dVdx, dVdy
+    if np.size(np.shape(varg)) == 3:
+        nz, ny, nx = np.shape(varg)
+        for k in range(nz):
+            for j in range(1,ny-1,1):
+                for i in range(1,nx-1,1):
+                    dVdx[k,j,i] = (varg[k,j,i+1]-varg[k,j,i-1])/(2.*dxg[j,i])
+                    dVdy[k,j,i] = (varg[k,j+1,i]-varg[k,j-1,i])/(2.*dyg[j,i])
+    elif np.size(np.shape(varg)) == 2:
+        ny, nx = np.shape(varg)
+        for j in range(1,ny-1,1):
+            for i in range(1,nx-1,1):
+                dVdx[j,i] = (varg[j,i+1]-varg[j,i-1])/(2.*dxg[j,i])
+                dVdy[j,i] = (varg[j+1,i]-varg[j-1,i])/(2.*dyg[j,i])
+    # assert dVdx, dVdy as xarray.DataArray() object
+    #dVdx = xr.DataArray(dVdx)
+    #dVdy = xr.DataArray(dVdy)
+    # perform dimension/coordinate swap with pressure, which has appropriate dim/coord values
+    #dVdx = dim_coord_swap(dVdx, wrf.getvar(wrfHDL,'p'))
+    #dVdy = dim_coord_swap(dVdy, wrf.getvar(wrfHDL,'p'))
+    # return gradients
+    return dVdx, dVdy
+
+
 # get_wrf_ss: given the netCDF4.Dataset() file handle of a WRF file, compute the static stability
 #             as per: 
 #                 https://www.ncl.ucar.edu/Document/Functions/Contributed/static_stability.shtml
@@ -1637,17 +1699,20 @@ def interpolate_sigma_levels(field3D, pres3D, sfcPresDonor, topPresDonor, sigmaL
     sig3D = np.divide(pres3D - topPresDonor, sfcPresDonor - topPresDonor)
     # interpolate field3D on sig3D surfaces to donor's standard sigma-levels in sigmaLevels, with any
     # points that are not interperable assigned to np.nan
-    interp3D = wrf.interplevel(field3d=field3D,
-                               vert=sig3D,
-                               desiredlev=sigmaLevels,
-                               missing=np.nan,
-                               meta=True)  # meta=True will default to returning an xarray.DataArray() with
+    interp3D = interplevel(field3d=field3D,
+                           vert=sig3D,
+                           desiredlev=sigmaLevels,
+                           missing=np.nan,
+                           meta=False)     # meta=True will default to returning an xarray.DataArray() with
                                            # metadata (dimension and coordinate names/values) intact, rather
                                            # than a numpy array, if possible
     # if interp3D is an xarray.DataArray() object, the metadata is retained with the exception of the vertical
     # coordinate, in which case perform dim_coord_swap() on donor's pressure field to retain metadata
+    presDonor = getvar(donorHdl, 'p')
     if type(interp3D) == xr.core.dataarray.DataArray:
-        presDonor = getvar(donorHdl, 'p')
+        interp3D = dim_coord_swap(interp3D, presDonor)
+    else:
+        interp3D = xr.DataArray(interp3D)
         interp3D = dim_coord_swap(interp3D, presDonor)
     # return interp3D
     return interp3D
