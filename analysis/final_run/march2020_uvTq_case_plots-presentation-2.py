@@ -49,7 +49,7 @@ dtAvgEnd = datetime.datetime(2020, 3, 12, 12)
 # In[105]:
 
 
-# For a selected forecast time, plot the sea-level pressure, 2m temperature, and precipitation
+# For a selected forecast time, plot the sea-level pressure, 850-500 hPa thickness, and precipitation
 for fcstHr in range(25):
     # define forecast datetime stamp
     dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
@@ -992,6 +992,7 @@ for fcstHr in [24]:
     s = np.asarray(unpHdl.variables['ZNU']).squeeze()
     ptdPvor_int = interpolate_sigma_levels(ptdPvor, p, ps, pt, s, unpHdl)
     spdrng = np.arange(35.,100.,5.)
+    thtarng = np.arange(280.,450.,4.)
     pvorrng = [2.]
     
     slpPertInterval = np.arange(-30.,30.1, 2.)
@@ -1078,6 +1079,7 @@ for fcstHr in range(13):
     hgtrng = np.arange(-120., 120.1, 12.)
     hgtrng = hgtrng[np.where(hgtrng != 0.)]
     spdrng = np.arange(35.,100.,5.)
+    thtarng = np.arange(280.,450.,4.)
     pvorrng = [2.]
     
     slpPertInterval = np.arange(-30.,30.1, 2.)
@@ -1166,6 +1168,7 @@ for fcstHr in range(13):
     vorrng = np.arange(-10., 10.1, 1.)
     vorrng = vorrng[np.where(vorrng != 0.)]
     spdrng = np.arange(35.,100.,5.)
+    thtarng = np.arange(280.,450.,4.)
     pvorrng = [2.]
     
     slpPertInterval = np.arange(-30.,30.1, 2.)
@@ -1200,10 +1203,10 @@ for fcstHr in range(13):
     fig.savefig('fig_tank/f'+fcstHrStr+'.png',bbox_inches='tight',facecolor='white')
 
 
-# In[164]:
+# In[17]:
 
 
-for fcstHr in range(13):
+for fcstHr in [4]:
     latBegList = [47.5]
     lonBegList = [-98.5]
     latEndList = [28.5]
@@ -1244,6 +1247,7 @@ for fcstHr in range(13):
     ptdW_int = interpolate_sigma_levels(ptdW, p, ps, pt, s, unpHdl)
     ptdPvor_int = interpolate_sigma_levels(ptdPvor, p, ps, pt, s, unpHdl)
     spdrng = np.arange(35.,100.,5.)
+    thtarng = np.arange(280.,450.,4.)
     pvorrng = [2.]
     
     slpPertInterval = np.arange(-30.,30.1, 2.)
@@ -1278,26 +1282,431 @@ for fcstHr in range(13):
     fig.savefig('fig_tank/f'+fcstHrStr+'.png',bbox_inches='tight',facecolor='white')
 
 
-# In[152]:
+# In[18]:
 
 
-k=10
-plt.contourf(ptdW[k,:,:].squeeze()-unpW[k,:,:].squeeze())
-plt.colorbar()
-plt.show()
+for fcstHr in [4]:
+    latBegList = [47.5]
+    lonBegList = [-98.5]
+    latEndList = [28.5]
+    lonEndList = [-70.]
+    dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
+    dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
+    unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
+    ptdFileFcst = posDir + 'wrfout_d01_' + dtFcstStr
+    unpHdl = Dataset(unpFileFcst)
+    ptdHdl = Dataset(ptdFileFcst)
+    # extract latitude and longitude, set longitude to 0 to 360 deg format 
+    lat = np.asarray(unpHdl.variables['XLAT']).squeeze()
+    lon = np.asarray(unpHdl.variables['XLONG']).squeeze()
+    fix = np.where(lon < 0.)
+    lon[fix] = lon[fix] + 360.
+    # define data and plot projection
+    datProj = gen_cartopy_proj(unpHdl)
+    plotProj = ccrs.PlateCarree()
+    unpW = wrf.getvar(unpHdl,'omega')
+    ptdW = wrf.getvar(ptdHdl,'omega')
+    unpPvor = wrf.getvar(unpHdl,'pvo')
+    ptdPvor = wrf.getvar(ptdHdl,'pvo')
+    unpThta = get_wrf_th(unpHdl)
+    u,v = get_uvmet(unpHdl)
+    unpSpd = np.sqrt(u**2. + v**2.)
+    unpSpd350 = wrf.interplevel(field3d=unpSpd,
+                                vert=wrf.getvar(unpHdl,'p'),
+                                desiredlev=35000.,
+                                missing=np.nan,
+                                squeeze=True,
+                                meta=False)
+    u,v = get_uvmet(ptdHdl)
+    ptdHgt = wrf.getvar(ptdHdl,'z')
+    p = wrf.getvar(ptdHdl,'p')
+    ps = np.asarray(unpHdl.variables['PSFC']).squeeze()
+    pt = np.asarray(unpHdl.variables['P_TOP']) * 1.0
+    s = np.asarray(unpHdl.variables['ZNU']).squeeze()
+    ptdW_int = interpolate_sigma_levels(ptdW, p, ps, pt, s, unpHdl)
+    ptdPvor_int = interpolate_sigma_levels(ptdPvor, p, ps, pt, s, unpHdl)
+    spdrng = np.arange(35.,100.,5.)
+    thtarng = np.arange(280.,450.,4.)
+    pvorrng = [2.]
+    
+    slpPertInterval = np.arange(-30.,30.1, 2.)
+    slpPertInterval = slpPertInterval[np.where(slpPertInterval != 0.)]
+    xSectShadInterval=np.arange(-2.5, 2.51, 0.25)
+    xSectShadInterval = xSectShadInterval[np.where(xSectShadInterval != 0.)]
+    fig = cross_section_plot(
+                                 wrfHDL=unpHdl,
+                                 latBegList=latBegList,
+                                 lonBegList=lonBegList,
+                                 latEndList=latEndList,
+                                 lonEndList=lonEndList,
+                                 xSectContVariableList=[unpThta, unpPvor, ptdPvor_int, unpSpd],
+                                 xSectContIntervalList=[thtarng, [2.], [2.], spdrng],
+                                 xSectContColorList=['black', '#1d913c', 'gold', '#818281'],
+                                 xSectContLineThicknessList=[0.5, 3., 3., 2.],
+                                 xSectShadVariable=unpW,
+                                 xSectShadInterval=xSectShadInterval,
+                                 slp=get_wrf_slp(unpHdl),
+                                 slpInterval=np.arange(950., 1050.1, 4.),
+                                 thk=unpSpd350,
+                                 thkInterval=spdrng,
+                                 datProj=datProj,
+                                 plotProj=plotProj,
+                                 presLevMin=10000.,
+                                 xSectTitleStr=dtFcstStr + ' ({:d} hrs) perturbed omega'.format(fcstHr)
+                                )
+
+    print('hour {:d}'.format(fcstHr))
+    # save file
+    fcstHrStr=str(fcstHr).zfill(2)
+    fig.savefig('fig_tank/f'+fcstHrStr+'.png',bbox_inches='tight',facecolor='white')
+    
+    fig = cross_section_plot(
+                                 wrfHDL=unpHdl,
+                                 latBegList=latBegList,
+                                 lonBegList=lonBegList,
+                                 latEndList=latEndList,
+                                 lonEndList=lonEndList,
+                                 xSectContVariableList=[unpThta, unpPvor, ptdPvor_int, unpSpd],
+                                 xSectContIntervalList=[thtarng, [2.], [2.], spdrng],
+                                 xSectContColorList=['black', '#1d913c', 'gold', '#818281'],
+                                 xSectContLineThicknessList=[0.5, 3., 3., 2.],
+                                 xSectShadVariable=ptdW_int,
+                                 xSectShadInterval=xSectShadInterval,
+                                 slp=get_wrf_slp(unpHdl),
+                                 slpInterval=np.arange(950., 1050.1, 4.),
+                                 thk=unpSpd350,
+                                 thkInterval=spdrng,
+                                 datProj=datProj,
+                                 plotProj=plotProj,
+                                 presLevMin=10000.,
+                                 xSectTitleStr=dtFcstStr + ' ({:d} hrs) perturbed omega'.format(fcstHr)
+                                )
+
+    print('hour {:d}'.format(fcstHr))
+    # save file
+    fcstHrStr=str(fcstHr).zfill(2)
+    fig.savefig('fig_tank/f'+fcstHrStr+'.png',bbox_inches='tight',facecolor='white')
 
 
-# In[104]:
+# In[80]:
 
 
-sensList
+# For a selected time, generate a plan section of heights and isotachs at 250 hPa (core of subtropical jet)
+# and temperature advection by the geostrophic wind at 450 hPa (beneath the core, roughly at a level that
+# includes the upper front)
+for fcstHr in range(13):
+    latBegList = [47.5]
+    lonBegList = [-98.5]
+    latEndList = [28.5]
+    lonEndList = [-70.]
+    dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
+    dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
+    unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
+    ptdFileFcst = posDir + 'wrfout_d01_' + dtFcstStr
+    unpHdl = Dataset(unpFileFcst)
+    ptdHdl = Dataset(ptdFileFcst)
+    # extract latitude and longitude, set longitude to 0 to 360 deg format 
+    lat = np.asarray(unpHdl.variables['XLAT']).squeeze()
+    lon = np.asarray(unpHdl.variables['XLONG']).squeeze()
+    fix = np.where(lon < 0.)
+    lon[fix] = lon[fix] + 360.
+    # define data and plot projection
+    datProj = gen_cartopy_proj(unpHdl)
+    plotProj = ccrs.PlateCarree()
+    # unperturbed variables
+    unpHgt = wrf.getvar(unpHdl,'z')
+    unpHgt250 = wrf.interplevel(field3d=unpHgt,
+                                vert=wrf.getvar(unpHdl,'p'),
+                                desiredlev=25000.,
+                                missing=np.nan,
+                                squeeze=True,
+                                meta=False)
+    unpHgt450 = wrf.interplevel(field3d=unpHgt,
+                                vert=wrf.getvar(unpHdl,'p'),
+                                desiredlev=45000.,
+                                missing=np.nan,
+                                squeeze=True,
+                                meta=False)
+    unpdZdx450, unpdZdy450 = get_wrf_grad(unpHdl,unpHgt450)
+    f = 2. * 7.292E-05 * np.sin(lat * np.pi/180.)
+    g = 9.81
+    unpUgeo450 = np.multiply(-g*f**-1., unpdZdy450)
+    unpVgeo450 = np.multiply(g*f**-1., unpdZdx450)
+    u,v = get_uvmet(unpHdl)
+    unpSpd = np.sqrt(u**2. + v**2.)
+    unpSpd250 = wrf.interplevel(field3d=unpSpd,
+                                vert=wrf.getvar(unpHdl,'p'),
+                                desiredlev=25000.,
+                                missing=np.nan,
+                                squeeze=True,
+                                meta=False)
+    unpUwd450 = wrf.interplevel(field3d=u,
+                                vert=wrf.getvar(unpHdl,'p'),
+                                desiredlev=45000.,
+                                missing=np.nan,
+                                squeeze=True,
+                                meta=False)
+    unpVwd450 = wrf.interplevel(field3d=v,
+                                vert=wrf.getvar(unpHdl,'p'),
+                                desiredlev=45000.,
+                                missing=np.nan,
+                                squeeze=True,
+                                meta=False)
+    unpTmp = get_wrf_tk(unpHdl)
+    unpTmp450 = wrf.interplevel(field3d=unpTmp,
+                                vert=wrf.getvar(unpHdl,'p'),
+                                desiredlev=45000.,
+                                missing=np.nan,
+                                squeeze=True,
+                                meta=False)
+    unpdTdx450, unpdTdy450 = get_wrf_grad(unpHdl,unpTmp450)
+    unpTmpAdv450 = np.multiply(-unpUgeo450,unpdTdx450) + np.multiply(-unpVgeo450,unpdTdy450)
+    # perturbed variables
+    ptdHgt = wrf.getvar(ptdHdl,'z')
+    ptdHgt250 = wrf.interplevel(field3d=ptdHgt,
+                                vert=wrf.getvar(ptdHdl,'p'),
+                                desiredlev=25000.,
+                                missing=np.nan,
+                                squeeze=True,
+                                meta=False)
+    ptdHgt450 = wrf.interplevel(field3d=ptdHgt,
+                                vert=wrf.getvar(ptdHdl,'p'),
+                                desiredlev=45000.,
+                                missing=np.nan,
+                                squeeze=True,
+                                meta=False)
+    ptddZdx450, ptddZdy450 = get_wrf_grad(ptdHdl,ptdHgt450)
+    f = 2. * 7.292E-05 * np.sin(lat * np.pi/180.)
+    g = 9.81
+    ptdUgeo450 = np.multiply(-g*f**-1., ptddZdy450)
+    ptdVgeo450 = np.multiply(g*f**-1., ptddZdx450)
+    u,v = get_uvmet(ptdHdl)
+    ptdSpd = np.sqrt(u**2. + v**2.)
+    ptdSpd250 = wrf.interplevel(field3d=ptdSpd,
+                                vert=wrf.getvar(ptdHdl,'p'),
+                                desiredlev=25000.,
+                                missing=np.nan,
+                                squeeze=True,
+                                meta=False)
+    ptdUwd450 = wrf.interplevel(field3d=u,
+                                vert=wrf.getvar(ptdHdl,'p'),
+                                desiredlev=45000.,
+                                missing=np.nan,
+                                squeeze=True,
+                                meta=False)
+    ptdVwd450 = wrf.interplevel(field3d=v,
+                                vert=wrf.getvar(ptdHdl,'p'),
+                                desiredlev=45000.,
+                                missing=np.nan,
+                                squeeze=True,
+                                meta=False)
+    ptdTmp = get_wrf_tk(ptdHdl)
+    ptdTmp450 = wrf.interplevel(field3d=ptdTmp,
+                                vert=wrf.getvar(ptdHdl,'p'),
+                                desiredlev=45000.,
+                                missing=np.nan,
+                                squeeze=True,
+                                meta=False)
+    ptddTdx450, ptddTdy450 = get_wrf_grad(ptdHdl,ptdTmp450)
+    ptdTmpAdv450 = np.multiply(-ptdUgeo450,ptddTdx450) + np.multiply(-ptdVgeo450,ptddTdy450)
+    
+    fig, axs = plt.subplots(ncols=2,nrows=1,figsize=(30,7), subplot_kw={'projection' : datProj})
+
+    hgtrng=np.arange(9500.,11500.1,120.)
+    spdrng = np.arange(36.,100.1,8.)
+    shdrng=1.0E-03*np.arange(-2.,2.1,0.2).astype('float16')
+    mask = np.ones(np.shape(shdrng),dtype=bool)
+    mask[np.where(shdrng==0.)]=False
+    # left panel: unperturbed case
+    ax =  axs[0]
+    ax, (shd, cons, vec) = plan_section_plot(wrfHDL=unpHdl,
+                                            lat=lat,
+                                            lon=lon,
+                                            contVariableList=[unpHgt250,unpSpd250],
+                                            contIntervalList=[hgtrng,spdrng], 
+                                            contColorList=['black','green'],
+                                            contLineThicknessList=[0.75,1.5],
+                                            shadVariable=unpTmpAdv450,
+                                            shadInterval=shdrng[mask],
+                                            shadAlpha=1.0,
+                                            datProj=datProj,
+                                            plotProj=plotProj,
+                                            shadCmap='seismic',
+                                            uVecVariable=None,
+                                            vVecVariable=None,
+                                            vectorThinning=None,
+                                            vecColor=None,
+                                            figax=ax)
+    # add a title
+    ax.set_title(dtFcstStr + ' ({:d} hrs) unperturbed 250 hPa geop. height and isotachs, 450 geostr. temp. adv.'.format(fcstHr))
+    
+    # right panel: perturbed case
+    ax =  axs[1]
+    ax, (shd, cons, vec) = plan_section_plot(wrfHDL=ptdHdl,
+                                            lat=lat,
+                                            lon=lon,
+                                            contVariableList=[ptdHgt250,ptdSpd250],
+                                            contIntervalList=[hgtrng,spdrng], 
+                                            contColorList=['black','green'],
+                                            contLineThicknessList=[0.75,1.5],
+                                            shadVariable=ptdTmpAdv450,
+                                            shadInterval=shdrng[mask],
+                                            shadAlpha=1.0,
+                                            datProj=datProj,
+                                            plotProj=plotProj,
+                                            shadCmap='seismic',
+                                            uVecVariable=None,
+                                            vVecVariable=None,
+                                            vectorThinning=None,
+                                            vecColor=None,
+                                            figax=ax)
+    # add a title
+    ax.set_title(dtFcstStr + ' ({:d} hrs) perturbed 250 hPa geop. height and isotachs, 450 geostr. temp. adv.'.format(fcstHr))
+    # add cross-section line to both panels
+    axs[0].plot(lonBegList[0],latBegList[0],'o',transform=plotProj,color='magenta')
+    axs[0].plot(lonEndList[0],latEndList[0],'o',transform=plotProj,color='magenta')
+    axs[0].plot((lonBegList[0],lonEndList[0]),(latBegList[0],latEndList[0]),transform=plotProj,color='magenta')
+    axs[1].plot(lonBegList[0],latBegList[0],'o',transform=plotProj,color='magenta')
+    axs[1].plot(lonEndList[0],latEndList[0],'o',transform=plotProj,color='magenta')
+    axs[1].plot((lonBegList[0],lonEndList[0]),(latBegList[0],latEndList[0]),transform=plotProj,color='magenta')
+    # save file
+    fcstHrStr=str(fcstHr).zfill(2)
+    fig.savefig('fig_tank/f'+fcstHrStr+'_2panel.png',bbox_inches='tight',facecolor='white')
+    
+    # separately, plot the temperature advection difference
+    fig, axs = plt.subplots(ncols=1,nrows=1,figsize=(14,7), subplot_kw={'projection' : datProj})
+
+    hgtrng=np.arange(9500.,11500.1,120.)
+    spdrng = np.arange(36.,100.1,8.)
+    shdrng=1.0E-03*np.arange(-2.,2.1,0.2).astype('float16')
+    mask = np.ones(np.shape(shdrng),dtype=bool)
+    mask[np.where(shdrng==0.)]=False
+    # difference plot of 450 hPa T-adv on unperturbed 250 hPa state
+    ax =  axs
+    ax, (shd, cons, vec) = plan_section_plot(wrfHDL=unpHdl,
+                                            lat=lat,
+                                            lon=lon,
+                                            contVariableList=[unpHgt250,unpSpd250],
+                                            contIntervalList=[hgtrng,spdrng], 
+                                            contColorList=['black','green'],
+                                            contLineThicknessList=[0.75,1.5],
+                                            shadVariable=ptdTmpAdv450-unpTmpAdv450,
+                                            shadInterval=shdrng[mask],
+                                            shadAlpha=1.0,
+                                            datProj=datProj,
+                                            plotProj=plotProj,
+                                            shadCmap='seismic',
+                                            uVecVariable=None,
+                                            vVecVariable=None,
+                                            vectorThinning=None,
+                                            vecColor=None,
+                                            figax=ax)
+    # add a title
+    ax.set_title(dtFcstStr + ' ({:d} hrs) unperturbed 250 hPa geop. height and isotachs, perturbation 450 geostr. temp. adv.'.format(fcstHr))
+    # add cross-section line
+    axs.plot(lonBegList[0],latBegList[0],'o',transform=plotProj,color='magenta')
+    axs.plot(lonEndList[0],latEndList[0],'o',transform=plotProj,color='magenta')
+    axs.plot((lonBegList[0],lonEndList[0]),(latBegList[0],latEndList[0]),transform=plotProj,color='magenta')
+    # save file
+    fcstHrStr=str(fcstHr).zfill(2)
+    fig.savefig('fig_tank/f'+fcstHrStr+'_diff.png',bbox_inches='tight',facecolor='white')
 
 
-# In[44]:
+# In[91]:
 
 
-hdl=Dataset(sensList[0])
-hdl.variables
+# For a selected forecast time, plot the sea-level pressure, 850-500 hPa thickness, and perturbation precipitation
+for fcstHr in range(13):
+    # define forecast datetime stamp
+    dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
+    dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
+    # define prior datetime stamp, if fcstHr==0, set to 0
+    if fcstHr == 0:
+        dtPrior = dtFcst
+        dtPriorStr = dtFcstStr
+    else:
+        dtPrior = dtFcst - datetime.timedelta(hours=1)
+        dtPriorStr = datetime.datetime.strftime(dtPrior,'%Y-%m-%d_%H:00:00')
+    # define WRF forecast file and open netCDF4 file-handle
+    unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
+    unpFilePrior = unpDir + 'wrfout_d01_' + dtPriorStr
+    ptdFileFcst = posDir + 'wrfout_d01_' + dtFcstStr
+    ptdFilePrior = posDir + 'wrfout_d01_' + dtPriorStr
+    unpHdl = Dataset(unpFileFcst)
+    unpHdlPrior = Dataset(unpFilePrior)
+    ptdHdl = Dataset(ptdFileFcst)
+    ptdHdlPrior = Dataset(ptdFilePrior)
+    # extract latitude and longitude, set longitude to 0 to 360 deg format 
+    lat = np.asarray(unpHdl.variables['XLAT']).squeeze()
+    lon = np.asarray(unpHdl.variables['XLONG']).squeeze()
+    fix = np.where(lon < 0.)
+    lon[fix] = lon[fix] + 360.
+    # define data and plot projection
+    datProj = gen_cartopy_proj(unpHdl)
+    plotProj = ccrs.PlateCarree()
+    # extract pressure for interpolation
+    prs = np.asarray(wrf.getvar(unpHdl,'p')).squeeze()
+    # extract sea-level pressure
+    slp = np.asarray(get_wrf_slp(unpHdl)).squeeze()
+    # extract accumulated non-convective precipitation, compute hourly
+    unpHrPrecipNC = np.asarray(unpHdl.variables['RAINNC']).squeeze() - np.asarray(unpHdlPrior.variables['RAINNC']).squeeze()
+    ptdHrPrecipNC = np.asarray(ptdHdl.variables['RAINNC']).squeeze() - np.asarray(ptdHdlPrior.variables['RAINNC']).squeeze()
+    # extract accumulated convective precipitation, compute hourly
+    unpHrPrecipC = np.asarray(unpHdl.variables['RAINC']).squeeze() - np.asarray(unpHdlPrior.variables['RAINC']).squeeze()
+    ptdHrPrecipC = np.asarray(ptdHdl.variables['RAINC']).squeeze() - np.asarray(ptdHdlPrior.variables['RAINC']).squeeze()
+    # interpolate heights to 850 and 500 hPa
+    z850 = wrf.interplevel(field3d=wrf.getvar(unpHdl,'z'),
+                           vert=prs,
+                           desiredlev=85000.,
+                           missing=np.nan,
+                           squeeze=True,
+                           meta=False)
+    z500 = wrf.interplevel(field3d=wrf.getvar(unpHdl,'z'),
+                           vert=prs,
+                           desiredlev=50000.,
+                           missing=np.nan,
+                           squeeze=True,
+                           meta=False)
+    # compute 850-500 thickness
+    thk = z500 - z850
+    fig, ax = plt.subplots(ncols=1,nrows=1,figsize=(14,7), subplot_kw={'projection' : datProj})
+
+    slprng=np.arange(900.,1030.1,4.)
+    thkrng=np.arange(3700.,4500.1,50.)
+    shdrng=np.arange(-10., 10.1, 1.).astype('float16')
+    mask=np.ones(np.shape(shdrng),dtype=bool)
+    mask[np.where(shdrng==0.)] = False
+    ax, (shd, cons, vec) = plan_section_plot(wrfHDL=unpHdl,
+                                            lat=lat,
+                                            lon=lon,
+                                            contVariableList=[slp,thk],
+                                            contIntervalList=[slprng,thkrng], 
+                                            contColorList=['black','#b06407'],
+                                            contLineThicknessList=[0.75,0.75],
+                                            shadVariable=(ptdHrPrecipC+ptdHrPrecipNC)-(unpHrPrecipC+unpHrPrecipNC),
+                                            shadInterval=shdrng[mask],
+                                            shadAlpha=1.0,
+                                            datProj=datProj,
+                                            plotProj=plotProj,
+                                            shadCmap='seismic',
+                                            uVecVariable=None,
+                                            vVecVariable=None,
+                                            vectorThinning=None,
+                                            vecColor=None,
+                                            figax=ax)
+    # add a title
+    ax.set_title(dtFcstStr + ' ({:d} hrs) unperturbed sea level pressure, 850-500 hPa thickness, perturbation precip.'.format(fcstHr))
+    # add contour labels to slp
+    ax.clabel(cons[0],levels=slprng[::2])
+    # save file
+    fcstHrStr=str(fcstHr).zfill(2)
+    fig.savefig('fig_tank/f'+fcstHrStr+'.png',bbox_inches='tight',facecolor='white')
+
+
+# In[92]:
+
+
+unpHdl.variables
 
 
 # In[47]:
