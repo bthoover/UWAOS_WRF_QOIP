@@ -955,7 +955,7 @@ def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, cont
 
 # cross_section_plot: Generates a series of 2-panel plots of
 #                         left: cross-section from (latBeg,lonBeg) to (latEnd,lonEnd) of xSectShadVariable shading and all contours in xSectContVariableList
-#                         right: sea-level pressure and thickness contours, and the cross-section line
+#                         right: the cross-section line, including any plan-section plot passed through as an input
 #                     Figure is 2 columns by X rows, with a row for each cross-section, up to 3 cross-sections
 #
 # REQUIRED INPUTS:
@@ -970,10 +970,7 @@ def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, cont
 # xSectContColorList: list of colors for xSectContVariable contours
 # xSectShadVariable: 3D variable for producing cross-section shading (xarray.DataArray() with dimension names and coordinate variables)
 # xSectShadInterval: interval values for xSectCont shading
-# slp: 2D sea-level pressure (probably unperturbed SLP)
-# slpInterval: interval values for slp contours
-# thk: 2D thickness (probably unperturbed thk)
-# thkInterval: interval values for thickness contours
+# planSectPlotTuple: tuple containing: (1) function to produce a pre-defined plan-section plot for the right figure axis and (2) netCDF4 file-handle for input to function; or None to draw only the map and cross-section line
 # datProj: cartopy.crs() projection of data
 # plotProj: cartopy.crs() projection of 2D plots
 #
@@ -988,6 +985,8 @@ def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, cont
 # OUTPUTS:
 #
 # fig: figure handle containing all panels
+# latLists: list of lists containing latitudes for all cross-sections
+# lonLists: list of lists contianing longitudes for all cross-sections
 #
 # DEPENDENCIES:
 #
@@ -1002,7 +1001,7 @@ def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, cont
 # analysis_dependencies.get_xsect()
 def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
                        xSectContVariableList, xSectContIntervalList, xSectContColorList,
-                       xSectShadVariable, xSectShadInterval, slp, slpInterval, thk, thkInterval,
+                       xSectShadVariable, xSectShadInterval, planSectPlotTuple,
                        datProj, plotProj, xSectTitleStr=None, xSectShadCmap='seismic',
                        xSectContLineThicknessList=None, presLevMin=10000., presLevMax=100000.):
     import numpy as np
@@ -1057,6 +1056,9 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
                            [0.5, 0.35, 0.5, 0.3],
                            [0.5, 0.0, 0.5, 0.3]
                           ]
+    # initialize latLists, lonLists (output lists of latList, lonList values)
+    latLists = []
+    lonLists = []
     # loop through cross-sections
     for i in range(numxSect):
         # generate 2-panel plots with (left)  cross-section of initial geopotential height perturbations, and
@@ -1094,6 +1096,9 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
         xSectShad, latList, lonList = get_xsect(wrfHDL,
                                                 xSectShadVariable,
                                                 latBeg, lonBeg, latEnd, lonEnd)
+        # add latList, lonList to lat/lonLists
+        latLists.append(latList)
+        lonLists.append(lonList)
         # plot cross-section (left panel)
         ax = fig.add_axes(rect=leftPanels[i])
         # plot shading
@@ -1128,44 +1133,43 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
         else:
             ax.set_title('cross section {:d}'.format(i) + ' (' + xSectLineColor + ')')
         plt.colorbar(ax=ax, mappable=shd)
-        # plot SLP and thickness with SLP perturbation and cross-section line (right panel)
+        # (right panel) plot cross-section line on top of passed-through plan-section map, or
+        # if planSectTuple==None plot cross-section line on map
         ax = fig.add_axes(rect=rightPanels[i], projection=datProj)
-        # define 2D latitude and longitude arrays from wrfHDL
-        lat2D = np.asarray(wrfHDL.variables['XLAT']).squeeze()
-        lon2D = np.asarray(wrfHDL.variables['XLONG']).squeeze()
-        # assert lon2D as 0 to 360 format
-        fix = np.where(lon2D < 0.)
-        lon2D[fix] = lon2D[fix] + 360.
-        # plot slp as black contours
-        con1 = ax.contour(lon2D, lat2D, slp, slpInterval, colors='black', linewidths=1.0,
-                          transform=plotProj)
-        # label every other slp contour
-        ax.clabel(con1, levels=slpInterval[::2])
-        # plot thk as green contours
-        con2 = ax.contour(lon2D, lat2D, thk, thkInterval, colors='green', linewidths=0.75,
-                          transform=plotProj)
-        # add coastline in brown
-        ax.add_feature(cfeature.COASTLINE, edgecolor='brown', linewidth=1.5)
-        ax.set_title('cross section {:d}'.format(i))
-        # add gridlines
-        gl = ax.gridlines(crs=plotProj, draw_labels=True,
-                          linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
-        gl.top_labels = False
-        gl.bottom_labels = False
-        gl.right_labels = False
-        gl.xlines = True
-        gl.xlocator = mticker.FixedLocator(lonLines)
-        gl.ylocator = mticker.FixedLocator(latLines)
-        gl.xformatter = LONGITUDE_FORMATTER
-        gl.yformatter = LATITUDE_FORMATTER
-        gl.xlabel_style = {'alpha' : 0.}
-        gl.ylabel_style = {'size' : 9, 'color' : 'gray'}
+        if planSectPlotTuple is not None:
+            planSectPlotFunc = planSectPlotTuple[0]
+            planSectPlotHdl = planSectPlotTuple[1]
+            ax = planSectPlotFunc(ax, planSectPlotHdl)
+        else:
+            # define 2D latitude and longitude arrays from wrfHDL
+            lat2D = np.asarray(wrfHDL.variables['XLAT']).squeeze()
+            lon2D = np.asarray(wrfHDL.variables['XLONG']).squeeze()
+            # assert lon2D as 0 to 360 format
+            fix = np.where(lon2D < 0.)
+            lon2D[fix] = lon2D[fix] + 360.
+            # add coastline in brown
+            ax.add_feature(cfeature.COASTLINE, edgecolor='brown', linewidth=1.5)
+            ax.set_title('cross section {:d}'.format(i))
+            # add gridlines
+            gl = ax.gridlines(crs=plotProj, draw_labels=True,
+                              linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
+            gl.top_labels = False
+            gl.bottom_labels = False
+            gl.right_labels = False
+            gl.xlines = True
+            gl.xlocator = mticker.FixedLocator(lonLines)
+            gl.ylocator = mticker.FixedLocator(latLines)
+            gl.xformatter = LONGITUDE_FORMATTER
+            gl.yformatter = LATITUDE_FORMATTER
+            gl.xlabel_style = {'alpha' : 0.}
+            gl.ylabel_style = {'size' : 9, 'color' : 'gray'}
         # plot cross-section line
         ax.plot(lonBeg, latBeg, 'o', transform=plotProj, color=xSectLineColor)
         ax.plot(lonEnd, latEnd, 'o', transform=plotProj, color=xSectLineColor)
-        ax.plot((lonBeg, lonEnd), (latBeg, latEnd), transform=plotProj, color=xSectLineColor)
-    # return figure handle
-    return fig
+        for i in range(len(lonList)-1):
+            ax.plot((lonList[i], lonList[i+1]), (latList[i], latList[i+1]), transform=plotProj, color=xSectLineColor)
+    # return figure handle and lat/lon list for each cross-section
+    return fig, latLists, lonLists
 
 
 # cross_section_diffplot: Generates a series of 2-panel plots of
