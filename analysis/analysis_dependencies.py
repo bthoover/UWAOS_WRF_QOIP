@@ -981,6 +981,7 @@ def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, cont
 # xSectContLineThicknessList: list of line thicknesses for xSectContVariable contours
 # presLevMin: minimum pressure level of cross-section (default: 10000. Pa)
 # presLevMax: maximum pressure level of cross-section (default: 100000. Pa)
+# xLineColorList: list of colors for cross-section lines on plan-section plot (default: None)
 #
 # OUTPUTS:
 #
@@ -1003,7 +1004,8 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
                        xSectContVariableList, xSectContIntervalList, xSectContColorList,
                        xSectShadVariable, xSectShadInterval, planSectPlotTuple,
                        datProj, plotProj, xSectTitleStr=None, xSectShadCmap='seismic',
-                       xSectContLineThicknessList=None, presLevMin=10000., presLevMax=100000.):
+                       xSectContLineThicknessList=None, presLevMin=10000., presLevMax=100000.,
+                       xLineColorList=None):
     import numpy as np
     import wrf
     import matplotlib.pyplot as plt
@@ -1071,13 +1073,34 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
         # define lat/lon lines for SLP/thickness plot
         latLines = np.arange(-90., 90., 5.)
         lonLines = np.arange(-180., 180. ,5.)
-        # define cross-section line-color based on value of i
-        if i == 0:
-            xSectLineColor = 'green'
-        elif i == 1:
-            xSectLineColor = 'orange'
-        elif i == 2:
-            xSectLineColor = 'magenta'
+        # define cross-section line-color based on value of i and xLineColorList
+        if xLineColorList is not None:
+            # assert xLineColorList as list if it is not already a list
+            xLineColorList = xLineColorList if type(xLineColorList)==list else [xLineColorList]
+            # based on value of i, use xLineColorList[i] if it exists, otherwise revert to default color
+            if i == 0:
+                if len(xLineColorList) >=1:
+                    xSectLineColor = xLineColorList[i]
+                else:
+                    xSectLineColor = 'green'
+            elif i == 1:
+                if len(xLineColorList) >=2:
+                    xSectLineColor = xLineColorList[i]
+                else:
+                    xSectLineColor = 'orange'
+            elif i == 2:
+                if len(xLineColorList) >=3:
+                    xSectLineColor = xLineColorList[i]
+                else:
+                    xSectLineColor = 'magenta'
+        else:
+            # based on value of i, use default color
+            if i == 0:
+                xSectLineColor = 'green'
+            elif i == 1:
+                xSectLineColor = 'orange'
+            elif i == 2:
+                xSectLineColor = 'magenta'
         # define figure for all panels (allow longer y-dimension for more cross-sections)
         fig = plt.figure(figsize=(12,5*numxSect))
         # assert contour inputs as list if they are not lists (i.e. if a single value was passed without
@@ -1176,6 +1199,13 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
 #                          left: cross-section from (latBeg,lonBeg) to (latEnd,lonEnd) of xSectShadVariable1-xSectShadVariable2 shading and all contours in xSectContVariableList, with all variables attached to a companion WRF netCDF4.Dataset() file handle for appropriate pressure coordinates
 #                         right: sea-level pressure and thickness contours with sea-level pressure perturbation shaded, and the cross-section line
 #                     Figure is 2 columns by X rows, with a row for each cross-section, up to 3 cross-sections
+#
+#
+#  ### NOTE ###
+#  THIS IS A DEPRECATED FUNCTION, THE UPDATED METHOD FOR A DIFFERENCE-PLOT CROSS-SECTION
+#  IS TO USE INTERPOLATE_TO_SIGMA_LEVELS() TO PUT BOTH FIELDS OF THE DIFFERENCE-PLOT ON
+#  ONE SET OF SIGMA-LEVELS AND THEN USE CROSS_SECTION_PLOT() AS PER NORMAL
+#  ############
 #
 # REQUIRED INPUTS:
 #
