@@ -1161,8 +1161,8 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
         ax = fig.add_axes(rect=rightPanels[i], projection=datProj)
         if planSectPlotTuple is not None:
             planSectPlotFunc = planSectPlotTuple[0]
-            planSectPlotHdl = planSectPlotTuple[1]
-            ax = planSectPlotFunc(ax, planSectPlotHdl)
+            planSectPlotInput = planSectPlotTuple[1]
+            ax = planSectPlotFunc(ax, planSectPlotInput)
         else:
             # define 2D latitude and longitude arrays from wrfHDL
             lat2D = np.asarray(wrfHDL.variables['XLAT']).squeeze()

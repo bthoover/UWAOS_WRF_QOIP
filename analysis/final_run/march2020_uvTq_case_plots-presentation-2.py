@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[1]:
+# In[8]:
 
 
 import numpy as np
@@ -15,6 +15,7 @@ from analysis_dependencies import get_wrf_th
 from analysis_dependencies import get_wrf_ss
 from analysis_dependencies import gen_wrf_proj
 from analysis_dependencies import get_wrf_grad
+from analysis_dependencies import get_xsect
 from analysis_dependencies import gen_cartopy_proj
 from analysis_dependencies import get_wrf_kinematic
 from analysis_dependencies import compute_inverse_laplacian
@@ -745,12 +746,10 @@ for fcstHr in [0]:
     fig.savefig('fig_tank/pos_f00_initSpdPert.png',bbox_inches='tight',facecolor='white')
 
 
-# In[8]:
+# In[13]:
 
 
-# Plot the 450 hPa geopotential height perturbations at 0, 6, and 12 hrs with an approximate cross-section line
-#   NOTE: The real cross-section line will be straight across the end-points, need to produce the list of
-#         latitudes and longitudes in cross_section_plot() to properly display it
+# Plot the 450 hPa geopotential height perturbations at 0, 6, and 12 hrs with a cross-section line
 fig, axs = plt.subplots(ncols=1,nrows=1,figsize=(14,7), subplot_kw={'projection' : datProj})
 
 for fcstHr in [0,6,12]:
@@ -817,23 +816,40 @@ for fcstHr in [0,6,12]:
                                             vectorScale=30,
                                             figax=ax)
     ax.set_title('(0/6/12 hrs) intensifying perturbed Hght 450 hPa')
-latBeg=48.0 #47.5
-lonBeg=-98.5
-latEnd=27.0 #28.5
-lonEnd=-70.
+# presentation cross-section values
+# latBeg = 47.5
+# lonBeg = -98.5
+# latEnd = 28.5
+# lonEnd = -70.
+# modified cross-section values
+# latBeg = 48.0
+# lonBeg = -98.5
+# latEnd = 27.0
+# lonEnd = -70.
+# final(?) cross-section values
+latBeg=48.0
+lonBeg=-94.
+latEnd=27.0
+lonEnd=-74.
+# collect the latitude and longitude values along cross-section from get_xsect(), for some
+# arbitrary cross-section data (we aren't using the data so it doesn't really matter)
+xSect, latList, lonList = get_xsect(unpHdl, wrf.getvar(unpHdl,'z'), latBeg, lonBeg, latEnd, lonEnd)
+# plot end-points of cross section
 axs.plot(lonBeg,latBeg,'o',transform=plotProj,color='magenta')
 axs.plot(lonEnd,latEnd,'o',transform=plotProj,color='magenta')
-axs.plot((lonBeg,lonEnd),(latBeg,latEnd),transform=plotProj,color='magenta')
+# along cross-section, plot segments defined by latList, lonList
+for i in range(len(latList)-1):
+    axs.plot((lonList[i],lonList[i+1]),(latList[i],latList[i+1]),transform=plotProj,color='magenta')
 fig.savefig('fig_tank/cross_section_plan_hgtPert.png',bbox_inches='tight',facecolor='white')
 
 
-# In[9]:
+# In[15]:
 
 
 # For a selected time, plot the cross-section of unperturbed potential temperature and wind speed, and perturbation
 # potential temperature (interpolated to the unperturbed sigma-levels). Plan-section plot is SLP and 850-500 hPa
 # thickness.
-for fcstHr in [12]:
+for fcstHr in range(13):
     latBegList = [latBeg]
     lonBegList = [lonBeg]
     latEndList = [latEnd]
@@ -956,13 +972,13 @@ for fcstHr in [12]:
     fig.savefig('fig_tank/f'+fcstHrStr+'.png',bbox_inches='tight',facecolor='white')
 
 
-# In[10]:
+# In[16]:
 
 
 # For a selected time, plot the cross-section of unperturbed potential temperature and wind speed, and perturbation
 # potential vorticity (interpolated to the unperturbed sigma-levels). Plan-section plot is SLP and 850-500 hPa
 # thickness.
-for fcstHr in [12]:
+for fcstHr in range(13):
     latBegList = [latBeg]
     lonBegList = [lonBeg]
     latEndList = [latEnd]
@@ -1083,13 +1099,13 @@ for fcstHr in [12]:
     fig.savefig('fig_tank/f'+fcstHrStr+'.png',bbox_inches='tight',facecolor='white')
 
 
-# In[13]:
+# In[17]:
 
 
 # For a selected time, plot the cross-section of unperturbed potential temperature and wind speed, and perturbation
 # geop. height (interpolated to the unperturbed sigma-levels). Plan-section plot is SLP and 850-500 hPa
 # thickness.
-for fcstHr in [12]:
+for fcstHr in range(13):
     latBegList = [latBeg]
     lonBegList = [lonBeg]
     latEndList = [latEnd]
@@ -1214,13 +1230,13 @@ for fcstHr in [12]:
     fig.savefig('fig_tank/f'+fcstHrStr+'.png',bbox_inches='tight',facecolor='white')
 
 
-# In[15]:
+# In[18]:
 
 
 # For a selected time, plot the cross-section of unperturbed potential temperature and wind speed, and perturbation
 # vorticity (interpolated to the unperturbed sigma-levels). Plan-section plot is SLP and 850-500 hPa
 # thickness.
-for fcstHr in [12]:
+for fcstHr in range(13):
     latBegList = [latBeg]
     lonBegList = [lonBeg]
     latEndList = [latEnd]
@@ -1344,12 +1360,13 @@ for fcstHr in [12]:
     fig.savefig('fig_tank/f'+fcstHrStr+'.png',bbox_inches='tight',facecolor='white')
 
 
-# In[16]:
+# In[32]:
 
 
 # For a selected time, plot the cross-section of unperturbed potential temperature and wind speed, and perturbation
-# omega (interpolated to the unperturbed sigma-levels). Plan-section plot is 250 hPa geop. hgt and wind speed
-for fcstHr in [4]:
+# omega (interpolated to the unperturbed sigma-levels). Plan-section plot is 250 hPa unperturbed geop. hgt and wind
+# speed with perturbation temperature advection by the geostrophic wind at a chosen interpolation level (shaded)
+for fcstHr in [3]:
     latBegList = [latBeg]
     lonBegList = [lonBeg]
     latEndList = [latEnd]
@@ -1387,39 +1404,89 @@ for fcstHr in [4]:
     ptdW_int = interpolate_sigma_levels(ptdW, p, ps, pt, s, unpHdl)
     ptdPvor_int = interpolate_sigma_levels(ptdPvor, p, ps, pt, s, unpHdl)
     # define function for plan-section plot: 250 hPa geopotential height and wind-speed
-    def right_panel(ax, wrfHdl):
+    def right_panel(ax, payloadTuple):
+        # expand payloadTuple into unpHdl and ptdHdl, and interpolation level
+        unpHdl = payloadTuple[0]
+        ptdHdl = payloadTuple[1]
+        intLev = payloadTuple[2]
         # define data and plot projection
-        datProj = gen_cartopy_proj(wrfHdl)
+        datProj = gen_cartopy_proj(unpHdl)
         plotProj = ccrs.PlateCarree()
-        # extract wind and compute speed
-        u,v = get_uvmet(wrfHdl)
+        # extract unperturbed wind and compute speed
+        u,v = get_uvmet(unpHdl)
         spd = np.sqrt(u**2. + v**2.)
-        # interpolate heights and speed to 250 hPa
-        z250 = wrf.interplevel(field3d=wrf.getvar(wrfHdl,'z'),
-                               vert=wrf.getvar(wrfHdl,'p'),
+        # interpolate unperturbed heights and speed to 250 hPa
+        z250 = wrf.interplevel(field3d=wrf.getvar(unpHdl,'z'),
+                               vert=wrf.getvar(unpHdl,'p'),
                                desiredlev=25000.,
                                missing=np.nan,
                                squeeze=True,
                                meta=False)
-
         s250 = wrf.interplevel(field3d=spd,
-                               vert=wrf.getvar(wrfHdl,'p'),
+                               vert=wrf.getvar(unpHdl,'p'),
                                desiredlev=25000.,
                                missing=np.nan,
                                squeeze=True,
                                meta=False)
+        # define f and g for geostrophic wind calculation
+        f = 2. * 7.292E-05 * np.sin(lat * np.pi/180.)  # 2*omega*sin(phi), s^-1
+        g = 9.80665  # m/s^2
+        # compute the geopotential height at intLev
+        unpZlev = wrf.interplevel(field3d=wrf.getvar(unpHdl,'z'),
+                                  vert=wrf.getvar(unpHdl,'p'),
+                                  desiredlev=intLev,
+                                  missing=np.nan,
+                                  squeeze=True,
+                                  meta=False)
+        ptdZlev = wrf.interplevel(field3d=wrf.getvar(ptdHdl,'z'),
+                                  vert=wrf.getvar(ptdHdl,'p'),
+                                  desiredlev=intLev,
+                                  missing=np.nan,
+                                  squeeze=True,
+                                  meta=False)
+        # compute the temperature at intLev
+        unpTlev = wrf.interplevel(field3d=get_wrf_tk(unpHdl),
+                                  vert=wrf.getvar(unpHdl,'p'),
+                                  desiredlev=intLev,
+                                  missing=np.nan,
+                                  squeeze=True,
+                                  meta=False)
+        ptdTlev = wrf.interplevel(field3d=get_wrf_tk(ptdHdl),
+                                  vert=wrf.getvar(ptdHdl,'p'),
+                                  desiredlev=intLev,
+                                  missing=np.nan,
+                                  squeeze=True,
+                                  meta=False)
+        # compute temperature gradients at intLev
+        unpDTDX, unpDTDY = get_wrf_grad(unpHdl, unpTlev)
+        ptdDTDX, ptdDTDY = get_wrf_grad(ptdHdl, ptdTlev)
+        # compute geopotential height gradients at intLev
+        unpDZDX, unpDZDY = get_wrf_grad(unpHdl, unpZlev)
+        ptdDZDX, ptdDZDY = get_wrf_grad(ptdHdl, ptdZlev)
+        # compute geostrophic wind components
+        unpUGEO = np.multiply(-g * f**-1., unpDZDY)
+        unpVGEO = np.multiply(g * f**-1., unpDZDX)
+        ptdUGEO = np.multiply(-g * f**-1., ptdDZDY)
+        ptdVGEO = np.multiply(g * f**-1., ptdDZDX)
+        # compute temperature advection by the geostrophic wind at intLev
+        unpTADVlev = np.multiply(-unpUGEO, unpDTDX) + np.multiply(-unpVGEO, unpDTDY)
+        ptdTADVlev = np.multiply(-ptdUGEO, ptdDTDX) + np.multiply(-ptdVGEO, ptdDTDY)
+        # generate plan-section plot
         hgtrng=np.arange(9500.,11500.1,120.)
         spdrng = np.arange(36.,100.1,8.)
+        shdrng=1.0E-03*np.arange(-2.,2.1,0.2).astype('float16')
+        mask = np.ones(np.shape(shdrng),dtype=bool)
+        mask[np.where(shdrng==0.)]=False
         ax, (shd, cons, vec) = plan_section_plot(wrfHDL=wrfHdl,
                                                 lat=lat,
                                                 lon=lon,
                                                 contVariableList=[z250,s250],
                                                 contIntervalList=[hgtrng,spdrng], 
                                                 contColorList=['black','green'],
-                                                contLineThicknessList=[0.75,2.5],
-                                                shadVariable=None,
-                                                shadInterval=None,
-                                                shadAlpha=1.0,
+                                                contLineThicknessList=[0.75,1.5],
+                                                shadVariable=ptdTADVlev-unpTADVlev,
+                                                shadInterval=shdrng[mask],
+                                                shadAlpha=0.7,
                                                 datProj=datProj,
                                                 plotProj=plotProj,
                                                 shadCmap='seismic',
@@ -1453,20 +1520,41 @@ for fcstHr in [4]:
                                  xSectShadInterval=xSectShadInterval,
                                  datProj=datProj,
                                  plotProj=plotProj,
-                                 planSectPlotTuple=(right_panel, unpHdl),
+                                 planSectPlotTuple=(right_panel, (unpHdl, ptdHdl, 55000.)),
                                  presLevMin=10000.,
-                                 xSectTitleStr=dtFcstStr + ' ({:d} hrs) perturbed omega'.format(fcstHr),
+                                 xSectTitleStr=dtFcstStr + ' ({:d} hrs) perturbation omega'.format(fcstHr),
                                  xLineColorList=['black']
                                 )
 
     print('hour {:d}'.format(fcstHr))
-    # highlight cross-section x-axis (lev=18) in region of positive omega anomaly (roughly x=67-77)
-    fig.axes[0].plot([67.,77.],[18.,18.],color='red',linewidth=8.0)
-    # highlight cross-section line in region of positive omega anomaly
-    fig.axes[2].plot([lonLists[0][67],lonLists[0][77]],[latLists[0][67],latLists[0][77]],color='red',linewidth=8.0,transform=plotProj)
+    # highlight cross-section x-axis (lev=18) in intervals along cross-section of 12 grid-points
+    fig.axes[0].plot([0.,11.],[18.,18.],color='black',linewidth=4.0,alpha=1.)
+    fig.axes[0].plot([12.,23.],[18.,18.],color='orange',linewidth=4.0,alpha=1.)
+    fig.axes[0].plot([24.,35.],[18.,18.],color='black',linewidth=4.0,alpha=1.)
+    fig.axes[0].plot([36.,47.],[18.,18.],color='orange',linewidth=4.0,alpha=1.)
+    fig.axes[0].plot([48.,59.],[18.,18.],color='black',linewidth=4.0,alpha=1.)
+    fig.axes[0].plot([60.,71.],[18.,18.],color='orange',linewidth=4.0,alpha=1.)
+    fig.axes[0].plot([72.,83.],[18.,18.],color='black',linewidth=4.0,alpha=1.)
+    fig.axes[0].plot([84.,95.],[18.,18.],color='orange',linewidth=4.0,alpha=1.)
+    # highlight cross-section line in orange segments (line beneath is entirely black)
+    fig.axes[2].plot([lonLists[0][12],lonLists[0][23]],[latLists[0][12],latLists[0][23]],color='orange',linewidth=2.5,transform=plotProj,alpha=1.0)
+    fig.axes[2].plot([lonLists[0][36],lonLists[0][47]],[latLists[0][36],latLists[0][47]],color='orange',linewidth=2.5,transform=plotProj,alpha=1.0)
+    fig.axes[2].plot([lonLists[0][60],lonLists[0][71]],[latLists[0][60],latLists[0][71]],color='orange',linewidth=2.5,transform=plotProj,alpha=1.0)
+    fig.axes[2].plot([lonLists[0][84],lonLists[0][95]],[latLists[0][84],latLists[0][95]],color='orange',linewidth=2.5,transform=plotProj,alpha=1.0)
     # save file
     fcstHrStr=str(fcstHr).zfill(2)
     fig.savefig('fig_tank/f'+fcstHrStr+'.png',bbox_inches='tight',facecolor='white')
+
+
+# In[21]:
+
+
+# NOTE: There may be a significant contribution to perturbation PV in the direct west-east direction, based
+#       on the plots of geostrophic temperature advection and their location within the cyclonic shear. The
+#       large negative perturbations to temp adv will drive downward vertical motion, drawing down the dynamic
+#       tropopause (plan-section plot of perturbation potential temperature along dynamic trop?), which can
+#       feed the upper front PV intrusion into the middle troposphere. Consider west-east cross sections through
+#       the zone of temp adv differences.
 
 
 # In[ ]:
@@ -1475,10 +1563,11 @@ for fcstHr in [4]:
 # PICK UP UPDATES TO CROSS-SECTION ROUTINES HERE
 
 
-# In[ ]:
+# In[21]:
 
 
-
+fig,ax = plt.subplots(nrows=1,ncols=1,subplot_kw={'projection':ccrs.PlateCarree()})
+ax = right_panel(ax,(unpHdl,ptdHdl))
 
 
 # In[19]:
