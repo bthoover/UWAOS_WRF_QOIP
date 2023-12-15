@@ -230,7 +230,7 @@ def sensitivity_to_kinematic_by_level(kin,k,nx,ny,nz,ds_x,ds_y,msfm):
     def grad(psi0):
         return LAPS.dot(LAP.dot(psi0) - forcevec)
     # Optimize to solve
-    field, value, info = scipy.optimize.fmin_l_bfgs_b(fun, psi0.flatten(), grad, pgtol=1e-18, factr=.0001,
+    field, value, info = scipy.optimize.fmin_l_bfgs_b(fun, psi0.flatten(), grad, pgtol=1e-19, factr=.0001,
                                                   maxiter=150000,maxfun=15000*50)
     # Stop clock
     end = time.time() #...................................................................... Ending time
