@@ -753,7 +753,7 @@ for fcstHr in [0]:
     fig.savefig('fig_tank/pos_f00_initSpdPert.png',bbox_inches='tight',facecolor='white')
 
 
-# In[82]:
+# In[141]:
 
 
 # Plot the 850 hPa geopotential height perturbations at 0, 6, and 12 hrs with a cross-section line, and contrast
@@ -871,7 +871,163 @@ for i in range(len(latList)-1):
 fig.savefig('fig_tank/cross_section_plan_hgtPert.png',bbox_inches='tight',facecolor='white')
 
 
-# In[83]:
+# In[209]:
+
+
+# Generate cross-section lines:
+#
+# At discrete time-intervals, plot the sea-level pressure perturbation and 850-500 hPa thickness
+# Align cross-section centered on SLP minimum and oriented along thickness gradient at center
+# Constrain cross-section segment-length to 30 degrees of longitude
+#
+sampleHrs=[0., 6., 12., 18., 24., 30., 36.]
+sampleLatBegList=[42.75, 49.5, 51., 52., 52., 50.25, 49.5]
+sampleLonBegList=[-172.5, -165., -162., -158., -154., -149., -146.]
+sampleLatEndList=[48.75, 45.5, 46., 43.5, 41., 38.75, 35.]
+sampleLonEndList=[-142.5, -135., -132., -128., -124., -119., -116.]
+# Linearly interpolate for cross-section beg/end points at hourly segments
+f = interp1d(sampleHrs, sampleLatBegList)
+hourlyLatBegList=f(np.arange(37.))
+f = interp1d(sampleHrs, sampleLonBegList)
+hourlyLonBegList=f(np.arange(37.))
+f = interp1d(sampleHrs, sampleLatEndList)
+hourlyLatEndList=f(np.arange(37.))
+f = interp1d(sampleHrs, sampleLonEndList)
+hourlyLonEndList=f(np.arange(37.))
+
+
+fig, axs = plt.subplots(ncols=1,nrows=1,figsize=(14,7), subplot_kw={'projection' : datProj})
+
+for fcstHr in [6]:
+    dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
+    dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
+    unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
+    posFileFcst = posDir + 'wrfout_d01_' + dtFcstStr
+    negFileFcst = negDir + 'wrfout_d01_' + dtFcstStr
+    unpHdl = Dataset(unpFileFcst)
+    posHdl = Dataset(posFileFcst)
+    negHdl = Dataset(negFileFcst)
+    #extract latitude and longitude, set longitude to 0 to 360 deg format 
+    lat = np.asarray(unpHdl.variables['XLAT']).squeeze()
+    lon = np.asarray(unpHdl.variables['XLONG']).squeeze()
+    fix = np.where(lon < 0.)
+    lon[fix] = lon[fix] + 360.
+    # define data and plot projection
+    datProj = gen_cartopy_proj(unpHdl)
+    plotProj = ccrs.PlateCarree()
+    unpSlp = get_wrf_slp(unpHdl)
+    posSlp = get_wrf_slp(posHdl)
+    unpH850 = wrf.interplevel(field3d=wrf.getvar(unpHdl,'z'),
+                              vert=wrf.getvar(unpHdl,'p'),
+                              desiredlev=85000.,
+                              missing=np.nan,
+                              squeeze=True,
+                              meta=False)
+    unpH500 = wrf.interplevel(field3d=wrf.getvar(unpHdl,'z'),
+                              vert=wrf.getvar(unpHdl,'p'),
+                              desiredlev=50000.,
+                              missing=np.nan,
+                              squeeze=True,
+                              meta=False)
+    
+    #slprng=np.arange(900.,1030.1,2.)
+    slprng=np.arange(-18.,18.1,2.)
+    smask=np.ones(np.size(slprng),dtype='bool')
+    smask[np.where(slprng==0.)]=False
+    
+    ax=axs
+    ax, (shd, cons, vec) = plan_section_plot(wrfHDL=unpHdl,
+                                            lat=lat,
+                                            lon=lon,
+                                            contVariableList=[posSlp-unpSlp,unpH500-unpH850],
+                                            contIntervalList=[slprng,np.arange(3700.,4500.1,50.)],
+                                            contColorList=['black','red'],
+                                            contLineThicknessList=[1.0,0.75],
+                                            shadVariable=None,
+                                            shadInterval=None,
+                                            shadAlpha=1.0,
+                                            datProj=datProj,
+                                            plotProj=plotProj,
+                                            shadCmap='seismic',
+                                            uVecVariable=None,
+                                            vVecVariable=None,
+                                            vectorThinning=10,
+                                            vecColor='#35821b',
+                                            vectorScale=30,
+                                            figax=ax)
+    ax.set_title('SLP and 850-500 thickness')
+# presentation cross-section values
+# latBeg = 47.5
+# lonBeg = -98.5
+# latEnd = 28.5
+# lonEnd = -70.
+# modified cross-section values
+latBeg = 49.5
+lonBeg = -165.
+latEnd = 45.5
+lonEnd = -135.
+# final(?) cross-section values
+latBeg=hourlyLatBegList[fcstHr]
+lonBeg=hourlyLonBegList[fcstHr]
+latEnd=hourlyLatEndList[fcstHr]
+lonEnd=hourlyLonEndList[fcstHr]
+#hourlyLatBegList=[latBeg]
+#hourlyLonBegList=[lonBeg]
+#hourlyLatEndList=[latEnd]
+#hourlyLonEndList=[lonEnd]
+
+for j in range(len(hourlyLatBegList)):
+    xSect, latList, lonList = get_xsect(unpHdl, wrf.getvar(unpHdl,'z'), hourlyLatBegList[j], hourlyLonBegList[j],
+                                        hourlyLatEndList[j], hourlyLonEndList[j])
+    axs.plot(lonList[0],latList[0],'o',transform=plotProj,color='green',alpha=0.5)
+    axs.plot(lonList[-1],latList[-1],'o',transform=plotProj,color='green',alpha=0.5)
+    for i in range(len(latList)-1):
+        axs.plot((lonList[i],lonList[i+1]),(latList[i],latList[i+1]),transform=plotProj,color='green',alpha=0.5)
+
+# collect the latitude and longitude values along cross-section from get_xsect(), for some
+# arbitrary cross-section data (we aren't using the data so it doesn't really matter)
+xSect, latList, lonList = get_xsect(unpHdl, wrf.getvar(unpHdl,'z'), latBeg, lonBeg, latEnd, lonEnd)
+# plot end-points of cross section
+axs.plot(lonBeg,latBeg,'o',transform=plotProj,color='magenta')
+axs.plot(lonEnd,latEnd,'o',transform=plotProj,color='magenta')
+# along cross-section, plot segments defined by latList, lonList
+for i in range(len(latList)-1):
+    axs.plot((lonList[i],lonList[i+1]),(latList[i],latList[i+1]),transform=plotProj,color='magenta')        
+
+fig.savefig('fig_tank/cross_section_plan_hgtPert.png',bbox_inches='tight',facecolor='white')
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
+
+
+# In[ ]:
+
+
+
+
+
+# In[210]:
 
 
 # For a selected time, plot the cross-section of unperturbed potential temperature and wind speed, and perturbation
@@ -1000,7 +1156,7 @@ for fcstHr in [0,6,12,18,24,30,36]:
     fig.savefig('fig_tank/f'+fcstHrStr+'.png',bbox_inches='tight',facecolor='white')
 
 
-# In[84]:
+# In[211]:
 
 
 # For a selected time, plot the cross-section of unperturbed potential temperature and wind speed, and perturbation
@@ -1127,7 +1283,7 @@ for fcstHr in [0,6,12,18,24,30,36]:
     fig.savefig('fig_tank/f'+fcstHrStr+'.png',bbox_inches='tight',facecolor='white')
 
 
-# In[85]:
+# In[212]:
 
 
 # For a selected time, plot the cross-section of unperturbed potential temperature and wind speed, and perturbation
@@ -1258,7 +1414,7 @@ for fcstHr in [0,6,12,18,24,30,36]:
     fig.savefig('fig_tank/f'+fcstHrStr+'.png',bbox_inches='tight',facecolor='white')
 
 
-# In[86]:
+# In[213]:
 
 
 # For a selected time, plot the cross-section of unperturbed potential temperature and wind speed, and perturbation
@@ -1388,13 +1544,13 @@ for fcstHr in [0,6,12,18,24,30,36]:
     fig.savefig('fig_tank/f'+fcstHrStr+'.png',bbox_inches='tight',facecolor='white')
 
 
-# In[88]:
+# In[214]:
 
 
 # For a selected time, plot the cross-section of unperturbed potential temperature and wind speed, and perturbation
 # omega (interpolated to the unperturbed sigma-levels). Plan-section plot is 250 hPa unperturbed geop. hgt and wind
 # speed with perturbation temperature advection by the geostrophic wind at a chosen interpolation level (shaded)
-for fcstHr in [12]:
+for fcstHr in [0,6,12,18,24,30,36]:
     latBegList = [hourlyLatBegList[fcstHr]]
     lonBegList = [hourlyLonBegList[fcstHr]]
     latEndList = [hourlyLatEndList[fcstHr]]
