@@ -49,7 +49,7 @@ def generate_figure_panel(wrfHdl, figureName):
     # generate figure panel
     fig, ax = plt.subplots(ncols=1,nrows=1,figsize=(14,7), subplot_kw={'projection' : datProj})
     # define contour levels of SLP and thickness
-    slpContours =np.arange(900., 1030.1, 4.)
+    slpContours =np.arange(900., 1040.1, 4.)
     thkContours =np.arange(3700., 4500.1, 50.)
     # generate plan-section plot for figure panel axis
     ax, (shd, cons, vec) = plan_section_plot(wrfHDL=wrfHdl,
@@ -57,7 +57,7 @@ def generate_figure_panel(wrfHdl, figureName):
                                              lon=lon,
                                              contVariableList=[slp, thk],
                                              contIntervalList=[slpContours, thkContours],
-                                             contColorList=['black', '#b06407'],
+                                             contColorList=['black', '#19a83d'],
                                              contLineThicknessList=[1.5, 2.0],
                                              shadVariable=None,
                                              shadInterval=None,
