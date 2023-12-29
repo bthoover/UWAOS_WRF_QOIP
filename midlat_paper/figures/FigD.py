@@ -24,7 +24,7 @@ from analysis_dependencies import plan_section_plot
 #
 # define internal functions
 #
-def generate_figure_panel(wrfHdl, figureName):
+def generate_figure_panel(wrfHdl, sensIndex, figureName):
     # extract latitude and longitude, set longitude to 0 to 360 deg format
     lat = np.asarray(wrfHdl.variables['XLAT']).squeeze()
     lon = np.asarray(wrfHdl.variables['XLONG']).squeeze()
@@ -71,16 +71,25 @@ def generate_figure_panel(wrfHdl, figureName):
         hdl = Dataset(sensFile)
         contVarList.append(-1.*np.asarray(hdl.variables['G_MU']).squeeze())  # -1 included here to force contours into positive values and be plotted as solid contours
         contIntList.append([-1.,0.,1.])
-        # plot the unperturbed simulation(s) in black with double-thickness, otherwise set to an appropriate
-        # value in the red-blue spectrum
-        if 'final_sens_d01_unpi00' in sensFile:
-            contColList.append('black')
-        else:
-            contColList.append(matplotlib.colors.to_hex((1.-i/len(sensList), 0., i/len(sensList))))
-        if 'final_sens_d01_unpi00' in sensFile:
+        if i == sensIndex:
+            if 'final_sens_d01_unpi00' in sensFile:
+                contColList.append('black')
+            else:
+                contColList.append(matplotlib.colors.to_hex((1.-i/len(sensList), 0., i/len(sensList))))
             contThkList.append(3.0)
         else:
-            contThkList.append(1.5)
+            contColList.append('gray')
+            contThkList.append(1.0)
+        # plot the unperturbed simulation(s) in black with double-thickness, otherwise set to an appropriate
+        # value in the red-blue spectrum
+        #if 'final_sens_d01_unpi00' in sensFile:
+        #    contColList.append('black')
+        #else:
+        #    contColList.append(matplotlib.colors.to_hex((1.-i/len(sensList), 0., i/len(sensList))))
+        #if 'final_sens_d01_unpi00' in sensFile:
+        #    contThkList.append(3.0)
+        #else:
+        #    contThkList.append(1.5)
     # generate plan-section plot for figure panel axis
     ax, (shd, cons, vec) = plan_section_plot(wrfHDL=wrfHdl,
                                         lat=lat,
@@ -124,7 +133,7 @@ if __name__ == "__main__":
     # define WRF forecast file and open netCDF4 file-handle
     fileFcst = negDir + 'wrfout_d01_' + dtFcstStr
     wrfHdl = Dataset(fileFcst)
-    generate_figure_panel(wrfHdl, 'FIGD_panel_A')
+    generate_figure_panel(wrfHdl, 0, 'FIGD_panel_A')
     # FIG Db: 24-hr unperturbed WRF SLP and all local projection operators
     fcstHr = 24
     # define forecast datetime stamp
@@ -133,7 +142,7 @@ if __name__ == "__main__":
     # define WRF forecast file and open netCDF4 file-handle
     fileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
     wrfHdl = Dataset(fileFcst)
-    generate_figure_panel(wrfHdl, 'FIGD_panel_B')
+    generate_figure_panel(wrfHdl, 15, 'FIGD_panel_B')
     # FIG Dc: 24-hr most intense (positive) WRF SLP and all local projection operators
     fcstHr = 24
     # define forecast datetime stamp
@@ -142,7 +151,7 @@ if __name__ == "__main__":
     # define WRF forecast file and open netCDF4 file-handle
     fileFcst = posDir + 'wrfout_d01_' + dtFcstStr
     wrfHdl = Dataset(fileFcst)
-    generate_figure_panel(wrfHdl, 'FIGD_panel_C')
+    generate_figure_panel(wrfHdl, 37, 'FIGD_panel_C')
 #
 # end
 #
