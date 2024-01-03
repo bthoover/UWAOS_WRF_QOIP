@@ -2965,7 +2965,7 @@ if __name__ == "__main__":
     #
 
 
-# In[78]:
+# In[108]:
 
 
 def generate_figure_panel(unpInitHdl, ptdInitHdl, unpFcstHdl, ptdFcstHdl):
@@ -3033,34 +3033,120 @@ def generate_figure_panel(unpInitHdl, ptdInitHdl, unpFcstHdl, ptdFcstHdl):
         pFcstAPE[k] = pFcstAPE[k] + 0.5 * (cp/tr) * np.sum(tp**2.)
         pFcstQE[k] = 0.
         pFcstQE[k] = pFcstKE[k] + 0.5 * eps * L**2./(cp*tr) * np.sum(qp**2.)
-    return (eta, pInitKE, pInitAPE, pInitQE, pFcstKE, pFcstAPE, pFcstQE)
+    # compute initial/forecast total energy (norm) profiles
+    pInitTOT = pInitKE + pInitAPE
+    pFcstTOT = pFcstKE + pFcstAPE
+    # plot figure panel: initial/forecast energy norm profile, with and without QE term
+    fig = plt.figure(figsize=(4,8))
+    plt.plot(5. * pInitTOT, eta, color='black', linewidth=2.0)
+    plt.plot(5. * (pInitTOT + pInitQE), eta, color='black', linewidth=2.0, linestyle='dotted')
+    plt.plot(pFcstTOT, eta, color='orange', linewidth=2.0)
+    plt.legend(['norm init (mul. 5)', 'norm init + QE (mul. 5)', 'norm final'])
+    plt.gca().invert_yaxis()
+    plt.show()
+    return
     
-    
-
-
-# In[92]:
-
-
 dataDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/case_archives/march2020/R_mu/positive/uvTq'
 unpInitHdl = Dataset(dataDir + '/wrfinput_d01_unpi00')
 ptdInitHdl = Dataset(dataDir + '/wrfinput_d01_ptdi14')
 unpFcstHdl = Dataset(dataDir + '/wrfout_d01_unpi00')
 ptdFcstHdl = Dataset(dataDir + '/wrfout_d01_ptdi14')
-x = generate_figure_panel(unpInitHdl, ptdInitHdl, unpFcstHdl, ptdFcstHdl)
-
-initEng = x[1] + x[2] + x[3]
-fcstEng = x[4] + x[5] + x[6]
-
-plt.plot(20.*initEng,x[0],'b')
-plt.plot(fcstEng,x[0],'r')
-plt.gca().invert_yaxis()
-plt.show()
+generate_figure_panel(unpInitHdl, ptdInitHdl, unpFcstHdl, ptdFcstHdl)
 
 
-# In[ ]:
+# In[131]:
 
 
-# PICK UP UPDATES TO CROSS-SECTION ROUTINES HERE
+def generate_figure_panel(unpHdls, ptdHdls, sensHdls):
+    # constants
+    cp = 1004.  # specific heat at constant pressure
+    tr = 270.   # reference temperature
+    L = 2.5104E+06  # latent heat of condensation
+    eps = 1.0  # latent heat coefficient
+    # extract eta-levels from unpInitHdl (should be identical for all files)
+    eta = np.asarray(unpInitHdl.variables['ZNU']).squeeze()  # d(eta) on half levels
+    fig = plt.figure(figsize=(4,8))
+    for i in range(len(unpHdls)):
+        unpHdl = unpHdls[i]
+        ptdHdl = ptdHdls[i]
+        sensHdl = sensHdls[i]
+        # extract sensitivity to (u,v,T,q) from sensitivity file
+        sensQ = np.asarray(sensHdl.variables['A_QVAPOR']).squeeze()
+        # define perturbations to (u,v,T,q) equating to 1 J/kg KE, APE, QE
+        pIdealQ = np.sqrt(2.*cp*tr/(eps*L**2.))
+        pInitQ = np.asarray(ptdHdl.variables['QVAPOR']).squeeze() - np.asarray(unpHdl.variables['QVAPOR']).squeeze()
+        # compute impact profile
+        impQIdeal = np.nan * np.ones(np.shape(eta))
+        impQInit = np.nan * np.ones(np.shape(eta))
+        for k in range(np.size(eta)):
+            impQIdeal[k] = np.sum(np.abs(sensQ[k,:,:].squeeze() * pIdealQ))
+            impQInit[k] = np.sum(np.multiply(sensQ[k,:,:].squeeze(), pInitQ[k,:,:].squeeze()))
+        # plot figure panel: impact profiles
+        plt.plot(impQInit, eta, color='black', linewidth=2.0)
+        plt.plot(impQIdeal, eta, color='black', linewidth=2.0, linestyle='dotted')
+    plt.gca().invert_yaxis()
+    plt.show()
+    return
+    
+dataDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/case_archives/march2020/R_mu/negative/uvTq'
+unpHdls = [
+           Dataset(dataDir + '/wrfinput_d01_unpi00'),
+           Dataset(dataDir + '/wrfinput_d01_unpi01'),
+           Dataset(dataDir + '/wrfinput_d01_unpi02'),
+           Dataset(dataDir + '/wrfinput_d01_unpi03'),
+           Dataset(dataDir + '/wrfinput_d01_unpi04'),
+           Dataset(dataDir + '/wrfinput_d01_unpi05'),
+           Dataset(dataDir + '/wrfinput_d01_unpi06'),
+           Dataset(dataDir + '/wrfinput_d01_unpi07'),
+           Dataset(dataDir + '/wrfinput_d01_unpi08'),
+           Dataset(dataDir + '/wrfinput_d01_unpi09'),
+           Dataset(dataDir + '/wrfinput_d01_unpi10'),
+           Dataset(dataDir + '/wrfinput_d01_unpi11'),
+           Dataset(dataDir + '/wrfinput_d01_unpi12'),
+           Dataset(dataDir + '/wrfinput_d01_unpi13'),
+           Dataset(dataDir + '/wrfinput_d01_unpi14')
+          ]
+ptdHdls = [
+           Dataset(dataDir + '/wrfinput_d01_ptdi00'),
+           Dataset(dataDir + '/wrfinput_d01_ptdi01'),
+           Dataset(dataDir + '/wrfinput_d01_ptdi02'),
+           Dataset(dataDir + '/wrfinput_d01_ptdi03'),
+           Dataset(dataDir + '/wrfinput_d01_ptdi04'),
+           Dataset(dataDir + '/wrfinput_d01_ptdi05'),
+           Dataset(dataDir + '/wrfinput_d01_ptdi06'),
+           Dataset(dataDir + '/wrfinput_d01_ptdi07'),
+           Dataset(dataDir + '/wrfinput_d01_ptdi08'),
+           Dataset(dataDir + '/wrfinput_d01_ptdi09'),
+           Dataset(dataDir + '/wrfinput_d01_ptdi10'),
+           Dataset(dataDir + '/wrfinput_d01_ptdi11'),
+           Dataset(dataDir + '/wrfinput_d01_ptdi12'),
+           Dataset(dataDir + '/wrfinput_d01_ptdi13'),
+           Dataset(dataDir + '/wrfinput_d01_ptdi14')
+          ]
+sensHdls = [
+            Dataset(dataDir + '/gradient_wrfplus_d01_unpi00'),
+            Dataset(dataDir + '/gradient_wrfplus_d01_unpi01'),
+            Dataset(dataDir + '/gradient_wrfplus_d01_unpi02'),
+            Dataset(dataDir + '/gradient_wrfplus_d01_unpi03'),
+            Dataset(dataDir + '/gradient_wrfplus_d01_unpi04'),
+            Dataset(dataDir + '/gradient_wrfplus_d01_unpi05'),
+            Dataset(dataDir + '/gradient_wrfplus_d01_unpi06'),
+            Dataset(dataDir + '/gradient_wrfplus_d01_unpi07'),
+            Dataset(dataDir + '/gradient_wrfplus_d01_unpi08'),
+            Dataset(dataDir + '/gradient_wrfplus_d01_unpi09'),
+            Dataset(dataDir + '/gradient_wrfplus_d01_unpi10'),
+            Dataset(dataDir + '/gradient_wrfplus_d01_unpi11'),
+            Dataset(dataDir + '/gradient_wrfplus_d01_unpi12'),
+            Dataset(dataDir + '/gradient_wrfplus_d01_unpi13'),
+            Dataset(dataDir + '/gradient_wrfplus_d01_unpi14')
+           ]
+generate_figure_panel(unpHdls, ptdHdls, sensHdls)
+
+
+# In[109]:
+
+
+unpHdl.variables
 
 
 # In[21]:
