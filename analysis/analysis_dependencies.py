@@ -1102,7 +1102,7 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
             elif i == 2:
                 xSectLineColor = 'magenta'
         # define figure for all panels (allow longer y-dimension for more cross-sections)
-        fig = plt.figure(figsize=(12,5*numxSect))
+        fig = plt.figure(figsize=(14,5*numxSect))
         # assert contour inputs as list if they are not lists (i.e. if a single value was passed without
         # encapsulating in a list)
         xSectContVariableList = xSectContVariableList if type(xSectContVariableList)==list else [xSectContVariableList]

@@ -3731,108 +3731,130 @@ ax, (shd, cons, vec) = plan_section_plot(wrfHDL=wrfHdl,
                                         figax=ax)
 
 
-# In[ ]:
+# In[29]:
 
 
-# ALONG TROUGH AXIS CROSS SECTIONS (roughly tracks neg. pert. Tadv, appears to show PV intrusion)
-sampleHrs=[0., 3., 6., 9., 12.]
-sampleLatBegList=[45., 45., 45., 45., 45.]
-sampleLonBegList=[-83., -81.5, -80., -78., -77.5]
-sampleLatEndList=[25., 25., 25., 25., 25.]
-sampleLonEndList=[-88., -85., -82.5, -81.5, -79.5]
-# Linearly interpolate for cross-section beg/end points at hourly segments
-f = interp1d(sampleHrs, sampleLatBegList)
-hourlyLatBegList=f(np.arange(13.))
-f = interp1d(sampleHrs, sampleLonBegList)
-hourlyLonBegList=f(np.arange(13.))
-f = interp1d(sampleHrs, sampleLatEndList)
-hourlyLatEndList=f(np.arange(13.))
-f = interp1d(sampleHrs, sampleLonEndList)
-hourlyLonEndList=f(np.arange(13.))
-
+import numpy as np
+import matplotlib.pyplot as plt
+from netCDF4 import Dataset
+from analysis_dependencies import get_uvmet
+from analysis_dependencies import get_wrf_tk
+from analysis_dependencies import get_wrf_th
+from analysis_dependencies import gen_wrf_proj
+from analysis_dependencies import get_wrf_grad
+from analysis_dependencies import get_xsect
+from analysis_dependencies import gen_cartopy_proj
+from analysis_dependencies import plan_section_plot
+from analysis_dependencies import cross_section_plot
+from analysis_dependencies import interpolate_sigma_levels
+import datetime
+import wrf
+import cartopy
+from cartopy import crs as ccrs
+from cartopy import feature as cfeature
+import matplotlib
+import matplotlib.ticker as mticker
+from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
+import xarray as xr
+from scipy.interpolate import interp1d
 
 # define function for plan-section plot: 250 hPa geopotential height and wind-speed
 def right_panel(ax, payloadTuple):
     # expand payloadTuple into unpHdl and ptdHdl, and interpolation level
     unpHdl = payloadTuple[0]
     ptdHdl = payloadTuple[1]
-    intLev = payloadTuple[2]
+    intLevLow = payloadTuple[2]
+    intLevHigh = payloadTuple[3]
+    # define intLevMid as midpoint between intLevLow and intLevHigh
+    intLevMid = 0.5 * (intLevLow + intLevHigh)
+    # define intLevs as vector of levels between intLevLow and intLevHigh
+    # at intervals intLevInt
+    intLevInt = 2500.  # Pa
+    intLevs = np.arange(intLevLow, intLevHigh+0.01, intLevInt)
     # define data and plot projection
     datProj = gen_cartopy_proj(unpHdl)
     plotProj = ccrs.PlateCarree()
+    # extract latitude and longitude, set longitude to 0 to 360 deg format 
+    lat = np.asarray(unpHdl.variables['XLAT']).squeeze()
+    lon = np.asarray(unpHdl.variables['XLONG']).squeeze()
+    fix = np.where(lon < 0.)
+    lon[fix] = lon[fix] + 360.
     # extract unperturbed wind and compute speed
     u,v = get_uvmet(unpHdl)
     spd = np.sqrt(u**2. + v**2.)
-    # interpolate unperturbed heights and speed to 250 hPa
-    z250 = wrf.interplevel(field3d=wrf.getvar(unpHdl,'z'),
-                           vert=wrf.getvar(unpHdl,'p'),
-                           desiredlev=25000.,
-                           missing=np.nan,
-                           squeeze=True,
-                           meta=False)
-    s250 = wrf.interplevel(field3d=spd,
-                           vert=wrf.getvar(unpHdl,'p'),
-                           desiredlev=25000.,
-                           missing=np.nan,
-                           squeeze=True,
-                           meta=False)
+    # compute unperturbed wind speed at intLevMid
+    unpSmid = wrf.interplevel(field3d=spd,
+                              vert=wrf.getvar(unpHdl,'p'),
+                              desiredlev=intLevMid,
+                              missing=np.nan,
+                              squeeze=True,
+                              meta=False)
     # define f and g for geostrophic wind calculation
     f = 2. * 7.292E-05 * np.sin(lat * np.pi/180.)  # 2*omega*sin(phi), s^-1
     g = 9.80665  # m/s^2
-    # compute the geopotential height at intLev
-    unpZlev = wrf.interplevel(field3d=wrf.getvar(unpHdl,'z'),
-                              vert=wrf.getvar(unpHdl,'p'),
-                              desiredlev=intLev,
-                              missing=np.nan,
-                              squeeze=True,
-                              meta=False)
-    ptdZlev = wrf.interplevel(field3d=wrf.getvar(ptdHdl,'z'),
-                              vert=wrf.getvar(ptdHdl,'p'),
-                              desiredlev=intLev,
-                              missing=np.nan,
-                              squeeze=True,
-                              meta=False)
-    # compute the temperature at intLev
-    unpTlev = wrf.interplevel(field3d=get_wrf_tk(unpHdl),
-                              vert=wrf.getvar(unpHdl,'p'),
-                              desiredlev=intLev,
-                              missing=np.nan,
-                              squeeze=True,
-                              meta=False)
-    ptdTlev = wrf.interplevel(field3d=get_wrf_tk(ptdHdl),
-                              vert=wrf.getvar(ptdHdl,'p'),
-                              desiredlev=intLev,
-                              missing=np.nan,
-                              squeeze=True,
-                              meta=False)
-    # compute temperature gradients at intLev
-    unpDTDX, unpDTDY = get_wrf_grad(unpHdl, unpTlev)
-    ptdDTDX, ptdDTDY = get_wrf_grad(ptdHdl, ptdTlev)
-    # compute geopotential height gradients at intLev
-    unpDZDX, unpDZDY = get_wrf_grad(unpHdl, unpZlev)
-    ptdDZDX, ptdDZDY = get_wrf_grad(ptdHdl, ptdZlev)
-    # compute geostrophic wind components
-    unpUGEO = np.multiply(-g * f**-1., unpDZDY)
-    unpVGEO = np.multiply(g * f**-1., unpDZDX)
-    ptdUGEO = np.multiply(-g * f**-1., ptdDZDY)
-    ptdVGEO = np.multiply(g * f**-1., ptdDZDX)
-    # compute temperature advection by the geostrophic wind at intLev
-    unpTADVlev = np.multiply(-unpUGEO, unpDTDX) + np.multiply(-unpVGEO, unpDTDY)
-    ptdTADVlev = np.multiply(-ptdUGEO, ptdDTDX) + np.multiply(-ptdVGEO, ptdDTDY)
+    # loop through intLevs and compute geostrophic advection of temperature
+    unpTADVmean = np.zeros(np.shape(unpSmid))  # using any 2d field as a guide for dimensions
+    ptdTADVmean = np.zeros(np.shape(unpSmid))
+    for intLev in intLevs:
+        # compute the geopotential height at intLev
+        unpZlev = wrf.interplevel(field3d=wrf.getvar(unpHdl,'z'),
+                                  vert=wrf.getvar(unpHdl,'p'),
+                                  desiredlev=intLev,
+                                  missing=np.nan,
+                                  squeeze=True,
+                                  meta=False)
+        ptdZlev = wrf.interplevel(field3d=wrf.getvar(ptdHdl,'z'),
+                                  vert=wrf.getvar(ptdHdl,'p'),
+                                  desiredlev=intLev,
+                                  missing=np.nan,
+                                  squeeze=True,
+                                  meta=False)
+        # compute the temperature at intLev
+        unpTlev = wrf.interplevel(field3d=get_wrf_tk(unpHdl),
+                                  vert=wrf.getvar(unpHdl,'p'),
+                                  desiredlev=intLev,
+                                  missing=np.nan,
+                                  squeeze=True,
+                                  meta=False)
+        ptdTlev = wrf.interplevel(field3d=get_wrf_tk(ptdHdl),
+                                  vert=wrf.getvar(ptdHdl,'p'),
+                                  desiredlev=intLev,
+                                  missing=np.nan,
+                                  squeeze=True,
+                                  meta=False)
+        # compute temperature gradients at intLev
+        unpDTDX, unpDTDY = get_wrf_grad(unpHdl, unpTlev)
+        ptdDTDX, ptdDTDY = get_wrf_grad(ptdHdl, ptdTlev)
+        # compute geopotential height gradients at intLev
+        unpDZDX, unpDZDY = get_wrf_grad(unpHdl, unpZlev)
+        ptdDZDX, ptdDZDY = get_wrf_grad(ptdHdl, ptdZlev)
+        # compute geostrophic wind components
+        unpUGEO = np.multiply(-g * f**-1., unpDZDY)
+        unpVGEO = np.multiply(g * f**-1., unpDZDX)
+        ptdUGEO = np.multiply(-g * f**-1., ptdDZDY)
+        ptdVGEO = np.multiply(g * f**-1., ptdDZDX)
+        # compute temperature advection by the geostrophic wind at intLev
+        unpTADVlev = np.multiply(-unpUGEO, unpDTDX) + np.multiply(-unpVGEO, unpDTDY)
+        ptdTADVlev = np.multiply(-ptdUGEO, ptdDTDX) + np.multiply(-ptdVGEO, ptdDTDY)
+        # add advection terms to 2d mean fields
+        unpTADVmean = unpTADVmean + unpTADVlev
+        ptdTADVmean = ptdTADVmean + ptdTADVlev
+    # divide by number of levels to produce mean-values
+    unpTADVmean = unpTADVmean / np.size(intLevs)
+    ptdTADVmean = ptdTADVmean / np.size(intLevs)
     # generate plan-section plot
-    hgtrng=np.arange(9500.,11500.1,120.)
-    spdrng = np.arange(36.,100.1,8.)
-    shdrng=1.0E-03*np.arange(-2.,2.1,0.2).astype('float16')
+    spdrng = np.arange(24.,100.1,8.)
+    shdrng=1.0E-04*np.arange(-16.,16.01,2.).astype('float16')
     mask = np.ones(np.shape(shdrng),dtype=bool)
     mask[np.where(shdrng==0.)]=False
-    ax, (shd, cons, vec) = plan_section_plot(wrfHDL=wrfHdl,
+    ax, (shd, cons, vec) = plan_section_plot(wrfHDL=unpHdl,
                                             lat=lat,
                                             lon=lon,
-                                            contVariableList=[z250,s250],
-                                            contIntervalList=[hgtrng,spdrng], 
-                                            contColorList=['black','green'],
-                                            contLineThicknessList=[0.75,1.5],
-                                            shadVariable=ptdTADVlev-unpTADVlev,
+                                            contVariableList=[unpSmid],
+                                            contIntervalList=[spdrng], 
+                                            contColorList=['green'],
+                                            contLineThicknessList=[1.5],
+                                            shadVariable=ptdTADVmean-unpTADVmean,
                                             shadInterval=shdrng[mask],
                                             shadAlpha=0.7,
                                             datProj=datProj,
@@ -3844,22 +3866,16 @@ def right_panel(ax, payloadTuple):
                                             vecColor=None,
                                             figax=ax)
     # add a title
-    ax.set_title('(unperturbed 250 hPa geopt. height, isotachs')
+    ax.set_title('')
     # add contour labels to spd
-    ax.clabel(cons[1],levels=spdrng[::2])
+    ax.clabel(cons[0],levels=spdrng[::2])
     return ax
 
-def generate_figure_panel(unpHdl, ptdHdl, latBegList, lonBegList, latEndList, lonEndList, figureName)
-    latBegList = [hourlyLatBegList[fcstHr]]
-    lonBegList = [hourlyLonBegList[fcstHr]]
-    latEndList = [hourlyLatEndList[fcstHr]]
-    lonEndList = [hourlyLonEndList[fcstHr]]
-    dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
-    dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
-    unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
-    ptdFileFcst = posDir + 'wrfout_d01_' + dtFcstStr
-    unpHdl = Dataset(unpFileFcst)
-    ptdHdl = Dataset(ptdFileFcst)
+def generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, figureName):
+    latBegList = [latBeg]
+    lonBegList = [lonBeg]
+    latEndList = [latEnd]
+    lonEndList = [lonEnd]
     # extract latitude and longitude, set longitude to 0 to 360 deg format 
     lat = np.asarray(unpHdl.variables['XLAT']).squeeze()
     lon = np.asarray(unpHdl.variables['XLONG']).squeeze()
@@ -3906,9 +3922,9 @@ def generate_figure_panel(unpHdl, ptdHdl, latBegList, lonBegList, latEndList, lo
                                  xSectShadInterval=xSectShadInterval,
                                  datProj=datProj,
                                  plotProj=plotProj,
-                                 planSectPlotTuple=(right_panel, (unpHdl, ptdHdl, 55000.)),
+                                 planSectPlotTuple=(right_panel, (unpHdl, ptdHdl, 40000., 70000.)),
                                  presLevMin=10000.,
-                                 xSectTitleStr=dtFcstStr + ' ({:d} hrs) perturbation omega'.format(fcstHr),
+                                 xSectTitleStr=None,
                                  xLineColorList=['black']
                                 )
 
@@ -3918,10 +3934,41 @@ def generate_figure_panel(unpHdl, ptdHdl, latBegList, lonBegList, latEndList, lo
     fig.savefig(figureName + '.png', bbox_inches='tight', facecolor='white')
 
 
-# In[ ]:
+# In[37]:
 
 
+unpDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/final_runs/march2020/R_mu/unperturbed/'
+negDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/final_runs/march2020/R_mu/negative/uvTq/ptdi14/'
+posDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/final_runs/march2020/R_mu/positive/uvTq/ptdi22/'
+dtInit = datetime.datetime(2020, 3, 6, 12)
 
+fcstHr = 8
+
+dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
+dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
+unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
+ptdFileFcst = negDir + 'wrfout_d01_' + dtFcstStr
+unpHdl = Dataset(unpFileFcst)
+ptdHdl = Dataset(ptdFileFcst)
+
+# ALONG TROUGH AXIS CROSS SECTIONS (roughly tracks neg. pert. Tadv, appears to show PV intrusion)
+sampleHrs=[0., 3., 6., 9., 12.]
+sampleLatBegList=[45., 45., 45., 45., 45.]
+sampleLonBegList=[-83., -81.5, -80., -78., -77.5]
+sampleLatEndList=[25., 25., 25., 25., 25.]
+sampleLonEndList=[-88., -85., -82.5, -81.5, -79.5]
+# Linearly interpolate for cross-section beg/end points at hourly segments
+f = interp1d(sampleHrs, sampleLatBegList)
+hourlyLatBegList=f(np.arange(13.))
+f = interp1d(sampleHrs, sampleLonBegList)
+hourlyLonBegList=f(np.arange(13.))
+f = interp1d(sampleHrs, sampleLatEndList)
+hourlyLatEndList=f(np.arange(13.))
+f = interp1d(sampleHrs, sampleLonEndList)
+hourlyLonEndList=f(np.arange(13.))
+
+generate_figure_panel(unpHdl, ptdHdl, hourlyLatBegList[fcstHr], hourlyLonBegList[fcstHr],
+                      hourlyLatEndList[fcstHr], hourlyLonEndList[fcstHr], 'test')
 
 
 # In[ ]:
