@@ -1102,7 +1102,7 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
             elif i == 2:
                 xSectLineColor = 'magenta'
         # define figure for all panels (allow longer y-dimension for more cross-sections)
-        fig = plt.figure(figsize=(14,5*numxSect))
+        fig = plt.figure(figsize=(18,5*numxSect))
         # assert contour inputs as list if they are not lists (i.e. if a single value was passed without
         # encapsulating in a list)
         xSectContVariableList = xSectContVariableList if type(xSectContVariableList)==list else [xSectContVariableList]
@@ -1150,11 +1150,9 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
         # set y-axis limits and invert axis
         ax.set_ylim((np.min(yTickIndex),np.max(yTickIndex)))
         ax.invert_yaxis()
-        # add title
+        # add title if desired
         if xSectTitleStr is not None:
             ax.set_title(xSectTitleStr + ' (' + xSectLineColor + ')')
-        else:
-            ax.set_title('cross section {:d}'.format(i) + ' (' + xSectLineColor + ')')
         plt.colorbar(ax=ax, mappable=shd)
         # (right panel) plot cross-section line on top of passed-through plan-section map, or
         # if planSectTuple==None plot cross-section line on map
