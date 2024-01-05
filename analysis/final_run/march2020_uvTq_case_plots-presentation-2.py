@@ -3731,7 +3731,7 @@ ax, (shd, cons, vec) = plan_section_plot(wrfHDL=wrfHdl,
                                         figax=ax)
 
 
-# In[29]:
+# In[47]:
 
 
 import numpy as np
@@ -3895,7 +3895,7 @@ def generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, figure
     # compute (unperturbed) wind and wind speed
     u,v = get_uvmet(unpHdl)
     unpSpd = np.sqrt(u**2. + v**2.)
-    # interpolate perturbed omega and pvor to unperturbed sigma-levels
+    # interpolate perturbed speed, omega and pvor to unperturbed sigma-levels
     p = wrf.getvar(ptdHdl,'p')
     ps = np.asarray(unpHdl.variables['PSFC']).squeeze()
     pt = np.asarray(unpHdl.variables['P_TOP']) * 1.0
@@ -3934,7 +3934,7 @@ def generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, figure
     fig.savefig(figureName + '.png', bbox_inches='tight', facecolor='white')
 
 
-# In[37]:
+# In[48]:
 
 
 unpDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/final_runs/march2020/R_mu/unperturbed/'
@@ -3942,12 +3942,12 @@ negDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/final_runs/march2020/R_mu
 posDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/final_runs/march2020/R_mu/positive/uvTq/ptdi22/'
 dtInit = datetime.datetime(2020, 3, 6, 12)
 
-fcstHr = 8
+fcstHr = 0
 
 dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
 dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
 unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
-ptdFileFcst = negDir + 'wrfout_d01_' + dtFcstStr
+ptdFileFcst = posDir + 'wrfout_d01_' + dtFcstStr
 unpHdl = Dataset(unpFileFcst)
 ptdHdl = Dataset(ptdFileFcst)
 
@@ -3971,10 +3971,270 @@ generate_figure_panel(unpHdl, ptdHdl, hourlyLatBegList[fcstHr], hourlyLonBegList
                       hourlyLatEndList[fcstHr], hourlyLonEndList[fcstHr], 'test')
 
 
-# In[ ]:
+# In[8]:
 
 
+import numpy as np
+import matplotlib.pyplot as plt
+from netCDF4 import Dataset
+from analysis_dependencies import get_uvmet
+from analysis_dependencies import get_wrf_tk
+from analysis_dependencies import get_wrf_th
+from analysis_dependencies import gen_wrf_proj
+from analysis_dependencies import get_wrf_grad
+from analysis_dependencies import get_xsect
+from analysis_dependencies import gen_cartopy_proj
+from analysis_dependencies import plan_section_plot
+from analysis_dependencies import cross_section_plot
+from analysis_dependencies import interpolate_sigma_levels
+import datetime
+import wrf
+import cartopy
+from cartopy import crs as ccrs
+from cartopy import feature as cfeature
+import matplotlib
+import matplotlib.ticker as mticker
+from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
+import xarray as xr
+from scipy.interpolate import interp1d
 
+# define function for plan-section plot: 250 hPa geopotential height and wind-speed
+def right_panel(ax, payloadTuple):
+    # expand payloadTuple into unpHdl and ptdHdl, and interpolation level
+    unpHdl = payloadTuple[0]
+    ptdHdl = payloadTuple[1]
+    intLevLow = payloadTuple[2]
+    intLevHigh = payloadTuple[3]
+    # define intLevs as vector of levels between intLevLow and intLevHigh
+    # at intervals intLevInt
+    intLevInt = 2500.  # Pa
+    intLevs = np.arange(intLevLow, intLevHigh+0.01, intLevInt)
+    # define data and plot projection
+    datProj = gen_cartopy_proj(unpHdl)
+    plotProj = ccrs.PlateCarree()
+    # extract latitude and longitude, set longitude to 0 to 360 deg format 
+    lat = np.asarray(unpHdl.variables['XLAT']).squeeze()
+    lon = np.asarray(unpHdl.variables['XLONG']).squeeze()
+    fix = np.where(lon < 0.)
+    lon[fix] = lon[fix] + 360.
+    # extract wind and compute speed
+    u,v = get_uvmet(unpHdl)
+    unpSpd = np.sqrt(u**2. + v**2.)
+    u,v = get_uvmet(ptdHdl)
+    ptdSpd = np.sqrt(u**2. + v**2.)
+    # loop through intLevs and compute wind speed and temperature
+    unpTmean = np.zeros(np.shape(lat))  # using any 2d field as a guide for dimensions
+    ptdTmean = np.zeros(np.shape(lat))
+    unpSmean = np.zeros(np.shape(lat))  # using any 2d field as a guide for dimensions
+    ptdSmean = np.zeros(np.shape(lat))
+    for intLev in intLevs:
+        # compute the wind speed at intLev
+        unpSlev = wrf.interplevel(field3d=unpSpd,
+                                  vert=wrf.getvar(unpHdl,'p'),
+                                  desiredlev=intLev,
+                                  missing=np.nan,
+                                  squeeze=True,
+                                  meta=False)
+        ptdSlev = wrf.interplevel(field3d=ptdSpd,
+                                  vert=wrf.getvar(ptdHdl,'p'),
+                                  desiredlev=intLev,
+                                  missing=np.nan,
+                                  squeeze=True,
+                                  meta=False)
+        # compute the temperature at intLev
+        unpTlev = wrf.interplevel(field3d=get_wrf_tk(unpHdl),
+                                  vert=wrf.getvar(unpHdl,'p'),
+                                  desiredlev=intLev,
+                                  missing=np.nan,
+                                  squeeze=True,
+                                  meta=False)
+        ptdTlev = wrf.interplevel(field3d=get_wrf_tk(ptdHdl),
+                                  vert=wrf.getvar(ptdHdl,'p'),
+                                  desiredlev=intLev,
+                                  missing=np.nan,
+                                  squeeze=True,
+                                  meta=False)
+        # add temperature and wind terms to 2d mean fields
+        unpTmean = unpTmean + unpTlev
+        ptdTmean = ptdTmean + ptdTlev
+        unpSmean = unpSmean + unpSlev
+        ptdSmean = ptdSmean + ptdSlev
+    # divide by number of levels to produce mean-values
+    unpTmean = unpTmean / np.size(intLevs)
+    ptdTmean = ptdTmean / np.size(intLevs)
+    unpSmean = unpSmean / np.size(intLevs)
+    ptdSmean = ptdSmean / np.size(intLevs)
+    # generate plan-section plot
+    spdRange = np.arange(24.,100.1,8.)
+    tmpRange = np.arange(230., 280.1, 4.)
+    shdRange = np.arange(-2., 2.01, 0.25).astype('float16')
+    mask = np.ones(np.shape(shdRange),dtype='bool')
+    mask[np.where(shdRange==0.)] = False
+    ax, (shd, cons, vec) = plan_section_plot(wrfHDL=unpHdl,
+                                            lat=lat,
+                                            lon=lon,
+                                            contVariableList=[unpTmean, unpSmean],
+                                            contIntervalList=[tmpRange, spdRange], 
+                                            contColorList=['orange','green'],
+                                            contLineThicknessList=[1.0, 2.0],
+                                            shadVariable=ptdTmean-unpTmean,
+                                            shadInterval=shdRange[mask],
+                                            shadAlpha=1.0,
+                                            datProj=datProj,
+                                            plotProj=plotProj,
+                                            shadCmap='seismic',
+                                            uVecVariable=None,
+                                            vVecVariable=None,
+                                            vectorThinning=None,
+                                            vecColor=None,
+                                            figax=ax)
+    # add a title
+    ax.set_title('')
+    # add contour labels to spd
+    ax.clabel(cons[1],levels=spdRange[::2])
+    return ax
+
+def generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, figureName):
+    latBegList = [latBeg]
+    lonBegList = [lonBeg]
+    latEndList = [latEnd]
+    lonEndList = [lonEnd]
+    # extract latitude and longitude, set longitude to 0 to 360 deg format 
+    lat = np.asarray(unpHdl.variables['XLAT']).squeeze()
+    lon = np.asarray(unpHdl.variables['XLONG']).squeeze()
+    fix = np.where(lon < 0.)
+    lon[fix] = lon[fix] + 360.
+    # define data and plot projection
+    datProj = gen_cartopy_proj(unpHdl)
+    plotProj = ccrs.PlateCarree()
+    # compute temperature
+    unpT = get_wrf_tk(unpHdl)
+    ptdT = get_wrf_tk(ptdHdl)
+    # compute potential vorticity
+    unpPvor = wrf.getvar(unpHdl,'pvo')
+    ptdPvor = wrf.getvar(ptdHdl,'pvo')
+    # compute (unperturbed) potential temperature
+    unpThta = get_wrf_th(unpHdl)
+    # compute (unperturbed) wind and wind speed
+    u,v = get_uvmet(unpHdl)
+    unpSpd = np.sqrt(u**2. + v**2.)
+    # interpolate perturbed temperature and pvor to unperturbed sigma-levels
+    p = wrf.getvar(ptdHdl,'p')
+    ps = np.asarray(unpHdl.variables['PSFC']).squeeze()
+    pt = np.asarray(unpHdl.variables['P_TOP']) * 1.0
+    s = np.asarray(unpHdl.variables['ZNU']).squeeze()
+    ptdT_int = interpolate_sigma_levels(ptdT, p, ps, pt, s, unpHdl)
+    ptdPvor_int = interpolate_sigma_levels(ptdPvor, p, ps, pt, s, unpHdl)
+    # generate cross-section plot
+    xSectShadInterval=np.arange(-5., 5.01, 0.5)
+    xSectShadInterval = xSectShadInterval[np.where(xSectShadInterval != 0.)]
+    spdrng = np.arange(35.,100.,5.)
+    thtarng = np.arange(280.,450.,4.)
+    pvorrng = [2.]
+    fig, latLists, lonLists = cross_section_plot(
+                                 wrfHDL=unpHdl,
+                                 latBegList=latBegList,
+                                 lonBegList=lonBegList,
+                                 latEndList=latEndList,
+                                 lonEndList=lonEndList,
+                                 xSectContVariableList=[unpThta, unpPvor, ptdPvor_int, unpSpd],
+                                 xSectContIntervalList=[thtarng, pvorrng, pvorrng, spdrng],
+                                 xSectContColorList=['black', '#1d913c', 'gold', '#818281'],
+                                 xSectContLineThicknessList=[0.5, 3., 3., 2.],
+                                 xSectShadVariable=ptdT_int-unpT,
+                                 xSectShadInterval=xSectShadInterval,
+                                 datProj=datProj,
+                                 plotProj=plotProj,
+                                 planSectPlotTuple=(right_panel, (unpHdl, ptdHdl, 40000., 70000.)),
+                                 presLevMin=10000.,
+                                 xSectTitleStr=None,
+                                 xLineColorList=['black']
+                                )
+
+    print('hour {:d}'.format(fcstHr))
+    # save file
+    fcstHrStr=str(fcstHr).zfill(2)
+    fig.savefig(figureName + '.png', bbox_inches='tight', facecolor='white')
+
+
+# In[16]:
+
+
+unpDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/final_runs/march2020/R_mu/unperturbed/'
+negDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/final_runs/march2020/R_mu/negative/uvTq/ptdi14/'
+posDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/final_runs/march2020/R_mu/positive/uvTq/ptdi22/'
+dtInit = datetime.datetime(2020, 3, 6, 12)
+
+fcstHr = 0
+
+dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
+dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
+unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
+ptdFileFcst = posDir + 'wrfout_d01_' + dtFcstStr
+unpHdl = Dataset(unpFileFcst)
+ptdHdl = Dataset(ptdFileFcst)
+
+# ALONG TROUGH AXIS CROSS SECTIONS (roughly tracks neg. pert. Tadv, appears to show PV intrusion)
+sampleHrs=[0., 3., 6., 9., 12.]
+sampleLatBegList=[45., 45., 45., 45., 45.]
+sampleLonBegList=[-83., -81.5, -80., -78., -77.5]
+sampleLatEndList=[25., 25., 25., 25., 25.]
+sampleLonEndList=[-88., -85., -82.5, -81.5, -79.5]
+# Linearly interpolate for cross-section beg/end points at hourly segments
+f = interp1d(sampleHrs, sampleLatBegList)
+hourlyLatBegList=f(np.arange(13.))
+f = interp1d(sampleHrs, sampleLonBegList)
+hourlyLonBegList=f(np.arange(13.))
+f = interp1d(sampleHrs, sampleLatEndList)
+hourlyLatEndList=f(np.arange(13.))
+f = interp1d(sampleHrs, sampleLonEndList)
+hourlyLonEndList=f(np.arange(13.))
+
+generate_figure_panel(unpHdl, ptdHdl, hourlyLatBegList[fcstHr], hourlyLonBegList[fcstHr],
+                      hourlyLatEndList[fcstHr], hourlyLonEndList[fcstHr], 'test')
+
+
+# NW-->SE THROUGH MID-TROPOSPHERE TEMPERATURE PERTUBATIONS
+latBeg=47.0
+lonBeg=-102.
+latEnd=27.0
+lonEnd=-72.
+
+generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg,
+                      latEnd, lonEnd, 'test')
+
+
+# In[11]:
+
+
+tdiff=x[1]-x[0]
+sdiff=x[3]-x[2]
+tmid=x[0]
+smid=x[2]
+
+spdrng = np.arange(24.,100.1,8.)
+tmprng = np.arange(230., 280.1, 4.)
+spdDiffRange = np.arange(-2., 2.01, 0.25).astype('float16')
+spdDiffRange=spdDiffRange[np.where(spdDiffRange!=0.)]
+shd=plt.contourf(sdiff,spdDiffRange,cmap='seismic',vmin=np.min(spdDiffRange),vmax=np.max(spdDiffRange))
+plt.contour(smid,spdrng,colors='green',linewidths=2.0)
+plt.contour(tmid,tmprng,colors='orange',linewidths=2.0)
+plt.colorbar(mappable=shd)
+plt.show()
+
+shd=plt.contourf(tdiff,spdDiffRange,cmap='seismic',vmin=np.min(spdDiffRange),vmax=np.max(spdDiffRange))
+plt.contour(smid,spdrng,colors='green',linewidths=2.0)
+plt.contour(tmid,tmprng,colors='orange',linewidths=2.0)
+plt.colorbar(mappable=shd)
+plt.show()
+
+
+# In[77]:
+
+
+plt.contourf(sdiff)
+plt.colorbar()
+plt.show()
 
 
 # In[ ]:
