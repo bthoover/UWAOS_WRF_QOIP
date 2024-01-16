@@ -4058,7 +4058,7 @@ print(hourlyLatEndListAlongShear[i])
 print(hourlyLonEndListAlongShear[i])
 
 
-# In[202]:
+# In[317]:
 
 
 # Figure L: Cross-section of perturbation omega, with plan-section perturbation mean 400-700 hPa geopotential height
@@ -4313,9 +4313,9 @@ if __name__ == "__main__":
     unpHdl = Dataset(unpFileFcst)
     ptdHdl = Dataset(ptdFileFcst)
     latBeg = 63.0
-    lonBeg = -156.0
+    lonBeg = -152.0
     latEnd = 37.0
-    lonEnd = -148.0
+    lonEnd = -154.0
     generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGT_panel_B')
     
     # FIG Tc: most-intense simulation 18-hr cross section of perturbation omega
@@ -5082,12 +5082,369 @@ ptdHdl = Dataset(ptdFile)
 generate_figure_panel(unpHdl, ptdHdl)
 
 
-# In[245]:
+# In[318]:
 
 
-plt.contourf(1.0E+05*x)
-plt.colorbar()
-plt.show()
+# Figure L: Cross-section of perturbation omega, with plan-section perturbation mean 400-700 hPa geopotential height
+#           perturbation and perturbation temperature advection by the geostrophic wind, and mean wind speed for
+# a) most-intense simulation 3-hr forecast
+# b) most-intense simulation 6-hr forecast
+# c) most-intense simulation 9-hr forecast
+# d) most-intense simulation 12-hr forecast
+#
+# Cross-sections are designed to cut across height/t-adv mean perturbation and align across-shear
+import numpy as np
+import matplotlib.pyplot as plt
+from netCDF4 import Dataset
+from analysis_dependencies import get_uvmet
+from analysis_dependencies import get_wrf_tk
+from analysis_dependencies import get_wrf_th
+from analysis_dependencies import gen_wrf_proj
+from analysis_dependencies import get_wrf_grad
+from analysis_dependencies import get_xsect
+from analysis_dependencies import gen_cartopy_proj
+from analysis_dependencies import plan_section_plot
+from analysis_dependencies import cross_section_plot
+from analysis_dependencies import interpolate_sigma_levels
+import datetime
+import wrf
+import cartopy
+from cartopy import crs as ccrs
+from cartopy import feature as cfeature
+import matplotlib
+import matplotlib.ticker as mticker
+from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
+import xarray as xr
+from scipy.interpolate import interp1d
+#
+# define internal functions
+#
+# define function for plan-section plot: 250 hPa geopotential height and wind-speed
+def right_panel(ax, payloadTuple):
+    # expand payloadTuple into unpHdl and ptdHdl, and interpolation level
+    unpHdl = payloadTuple[0]
+    ptdHdl = payloadTuple[1]
+    intLev = payloadTuple[2]
+    # extract latitude and longitude, set longitude to 0 to 360 deg format 
+    lat = np.asarray(unpHdl.variables['XLAT']).squeeze()
+    lon = np.asarray(unpHdl.variables['XLONG']).squeeze()
+    fix = np.where(lon < 0.)
+    lon[fix] = lon[fix] + 360.
+    # define data and plot projection
+    datProj = gen_cartopy_proj(unpHdl)
+    plotProj = ccrs.PlateCarree()
+    # compute unperturbed wind
+    u,v = get_uvmet(unpHdl)
+    # compute potential vorticity
+    unpPvor = wrf.getvar(unpHdl,'pvo')
+    ptdPvor = wrf.getvar(ptdHdl,'pvo')
+    # interpolate potential vorticity to intLev
+    unpPvorLev = wrf.interplevel(field3d=unpPvor,
+                                 vert=wrf.getvar(unpHdl,'p'),
+                                 desiredlev=intLev,
+                                 missing=np.nan,
+                                 squeeze=True,
+                                 meta=False)
+    ptdPvorLev = wrf.interplevel(field3d=ptdPvor,
+                                 vert=wrf.getvar(ptdHdl,'p'),
+                                 desiredlev=intLev,
+                                 missing=np.nan,
+                                 squeeze=True,
+                                 meta=False)
+    # interpolate wind compontents to 300 hPa surface
+    unpUwdLev = wrf.interplevel(field3d=u,
+                                vert=wrf.getvar(unpHdl,'p'),
+                                desiredlev=intLev,
+                                missing=np.nan,
+                                squeeze=True,
+                                meta=False)
+    unpVwdLev = wrf.interplevel(field3d=v,
+                                vert=wrf.getvar(unpHdl,'p'),
+                                desiredlev=intLev,
+                                missing=np.nan,
+                                squeeze=True,
+                                meta=False)
+    # compute wind speed on intLev
+    unpSpdLev = np.sqrt(unpUwdLev**2. + unpVwdLev**2.)
+    # compute unperturbed sea-level pressure
+    unpSlp = get_wrf_slp(unpHdl)
+    #
+    dynrng = np.arange(-2., 10.1, 0.5)
+    #
+    shdrng = np.arange(-4.,4.01,0.5).astype('float16')
+    negMask = np.ones(np.shape(shdrng),dtype='bool')
+    negMask[np.where(shdrng<=0.)] = False
+    posMask = np.ones(np.shape(shdrng),dtype='bool')
+    posMask[np.where(shdrng>=0.)] = False
+    spdrng=[36., 54., 72., 90.]
+    defrng=1.0E-05*np.arange(5.,75.1,10.)
+    slprng=np.arange(1004., 1024.1, 4.)
+    #
+    shd=ax.contourf(lon, lat, unpPvorLev, levels=dynrng, cmap='gray', vmin=np.min(dynrng), vmax=np.max(dynrng), transform=plotProj)
+    ax.contourf(lon, lat, ptdPvorLev-unpPvorLev, levels=shdrng[posMask], cmap='seismic', vmin=np.min(shdrng), vmax=np.max(shdrng), transform=plotProj)
+    ax.contourf(lon, lat, ptdPvorLev-unpPvorLev, levels=shdrng[negMask], cmap='seismic', vmin=np.min(shdrng), vmax=np.max(shdrng), transform=plotProj)
+    con1=ax.contour(lon, lat, unpSpdLev, levels=spdrng, colors='black', transform=plotProj, linewidths=3.)
+    con2=ax.contour(lon, lat, unpSpdLev, levels=spdrng, colors='#ffd500', transform=plotProj, linewidths=1.)
+    ax.add_feature(cfeature.COASTLINE, edgecolor='brown', linewidth=1.5)
+    ax.clabel(con2,levels=spdrng)
+    # define lat/lon lines
+    latLines = np.arange(-90., 90., 5.)
+    lonLines = np.arange(-180., 180. ,5.)
+    gl = ax.gridlines(crs=plotProj, draw_labels=True,
+                      linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
+    gl.top_labels = False
+    gl.bottom_labels = False
+    gl.right_labels = False
+    gl.xlines = True
+    gl.xlocator = mticker.FixedLocator(lonLines)
+    gl.ylocator = mticker.FixedLocator(latLines)
+    gl.xformatter = LONGITUDE_FORMATTER
+    gl.yformatter = LATITUDE_FORMATTER
+    gl.xlabel_style = {'alpha' : 0.}
+    gl.ylabel_style = {'size' : 9, 'color' : 'gray'}
+    plt.colorbar(mappable=shd, ax=ax)
+    return ax
+
+def generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, figureName):
+    latBegList = [latBeg]
+    lonBegList = [lonBeg]
+    latEndList = [latEnd]
+    lonEndList = [lonEnd]
+    # extract latitude and longitude, set longitude to 0 to 360 deg format 
+    lat = np.asarray(unpHdl.variables['XLAT']).squeeze()
+    lon = np.asarray(unpHdl.variables['XLONG']).squeeze()
+    fix = np.where(lon < 0.)
+    lon[fix] = lon[fix] + 360.
+    # define data and plot projection
+    datProj = gen_cartopy_proj(unpHdl)
+    plotProj = ccrs.PlateCarree()
+    # compute omega
+    unpW = wrf.getvar(unpHdl,'omega')
+    ptdW = wrf.getvar(ptdHdl,'omega')
+    # compute potential vorticity
+    unpPvor = wrf.getvar(unpHdl,'pvo')
+    ptdPvor = wrf.getvar(ptdHdl,'pvo')
+    # compute (unperturbed) potential temperature
+    unpThta = get_wrf_th(unpHdl)
+    # compute (unperturbed) wind and wind speed
+    u,v = get_uvmet(unpHdl)
+    unpSpd = np.sqrt(u**2. + v**2.)
+    # interpolate perturbed speed, omega and pvor to unperturbed sigma-levels
+    p = wrf.getvar(ptdHdl,'p')
+    ps = np.asarray(unpHdl.variables['PSFC']).squeeze()
+    pt = np.asarray(unpHdl.variables['P_TOP']) * 1.0
+    s = np.asarray(unpHdl.variables['ZNU']).squeeze()
+    ptdW_int = interpolate_sigma_levels(ptdW, p, ps, pt, s, unpHdl)
+    ptdPvor_int = interpolate_sigma_levels(ptdPvor, p, ps, pt, s, unpHdl)
+    # generate cross-section plot
+    xSectShadInterval=np.arange(-2.5, 2.51, 0.25)
+    xSectShadInterval = xSectShadInterval[np.where(xSectShadInterval != 0.)]
+    spdrng = np.arange(35.,100.,5.)
+    thtarng = np.arange(280.,450.,4.)
+    pvorrng = [2.]
+    fig, latLists, lonLists = cross_section_plot(
+                                 wrfHDL=unpHdl,
+                                 latBegList=latBegList,
+                                 lonBegList=lonBegList,
+                                 latEndList=latEndList,
+                                 lonEndList=lonEndList,
+                                 xSectContVariableList=[unpThta, unpPvor, ptdPvor_int, unpSpd],
+                                 xSectContIntervalList=[thtarng, pvorrng, pvorrng, spdrng],
+                                 xSectContColorList=['black', '#1d913c', 'gold', '#818281'],
+                                 xSectContLineThicknessList=[0.5, 3., 3., 2.],
+                                 xSectShadVariable=ptdPvor_int-unpPvor,
+                                 xSectShadInterval=xSectShadInterval,
+                                 datProj=datProj,
+                                 plotProj=plotProj,
+                                 planSectPlotTuple=(right_panel, (unpHdl, ptdHdl, 30000.)),
+                                 presLevMin=10000.,
+                                 xSectTitleStr=None,
+                                 xLineColorList=['lime']
+                                )
+
+    print('hour {:d}'.format(fcstHr))
+    # save file
+    fcstHrStr=str(fcstHr).zfill(2)
+    fig.savefig(figureName + '.png', bbox_inches='tight', facecolor='white')
+#
+# begin
+#
+if __name__ == "__main__":
+    # define unperturbed and most-intense (positive) perturbed file subdirectories
+    unpDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/final_runs/nov2019/R_mu/unperturbed/'
+    ptdDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/final_runs/nov2019/R_mu/positive/uvTq/ptdi24/'
+    # define initial-condition datetime
+    dtInit = datetime.datetime(2019, 11, 25, 12)
+    
+    # FIG Ua: most-intense simulation 0-hr cross section of perturbation omega
+    fcstHr = 0
+    dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
+    dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
+    unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
+    ptdFileFcst = ptdDir + 'wrfout_d01_' + dtFcstStr
+    unpHdl = Dataset(unpFileFcst)
+    ptdHdl = Dataset(ptdFileFcst)
+    latBeg = 63.0
+    lonBeg = -164.0
+    latEnd = 40.0
+    lonEnd = -167.0
+    generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGU_panel_A')
+    
+    # FIG Ua: most-intense simulation 3-hr cross section of perturbation omega
+    fcstHr = 3
+    dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
+    dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
+    unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
+    ptdFileFcst = ptdDir + 'wrfout_d01_' + dtFcstStr
+    unpHdl = Dataset(unpFileFcst)
+    ptdHdl = Dataset(ptdFileFcst)
+    latBeg = 63.0
+    lonBeg = -162.0
+    latEnd = 40.0
+    lonEnd = -165.0
+    generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGU_panel_A')
+    
+    # FIG Ua: most-intense simulation 6-hr cross section of perturbation omega
+    fcstHr = 6
+    dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
+    dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
+    unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
+    ptdFileFcst = ptdDir + 'wrfout_d01_' + dtFcstStr
+    unpHdl = Dataset(unpFileFcst)
+    ptdHdl = Dataset(ptdFileFcst)
+    latBeg = 63.0
+    lonBeg = -163.0
+    latEnd = 40.0
+    lonEnd = -157.0
+    generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGU_panel_A')
+    
+    # FIG Ua: most-intense simulation 6-hr cross section of perturbation omega
+    fcstHr = 9
+    dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
+    dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
+    unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
+    ptdFileFcst = ptdDir + 'wrfout_d01_' + dtFcstStr
+    unpHdl = Dataset(unpFileFcst)
+    ptdHdl = Dataset(ptdFileFcst)
+    latBeg = 63.0
+    lonBeg = -160.0
+    latEnd = 40.0
+    lonEnd = -150.0
+    generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGU_panel_A')
+#
+# end
+#
+
+
+# In[278]:
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+from netCDF4 import Dataset
+from analysis_dependencies import get_wrf_slp
+from analysis_dependencies import gen_wrf_proj
+from analysis_dependencies import gen_cartopy_proj
+from analysis_dependencies import plan_section_plot
+import datetime
+import wrf
+import cartopy
+from cartopy import crs as ccrs
+from cartopy import feature as cfeature
+import matplotlib
+import matplotlib.ticker as mticker
+from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
+import xarray as xr
+
+# For a selected forecast time, plot the sea-level pressure, 850-500 hPa thickness, and precipitation
+def generate_figure_panel(unpHdl1, ptdHdl1, unpHdl2, ptdHdl2, figureName):
+    # extract latitude and longitude, set longitude to 0 to 360 deg format 
+    lat = np.asarray(unpHdl1.variables['XLAT']).squeeze()
+    lon = np.asarray(unpHdl1.variables['XLONG']).squeeze()
+    fix = np.where(lon < 0.)
+    lon[fix] = lon[fix] + 360.
+    # define data and plot projection
+    datProj = gen_cartopy_proj(unpHdl1)
+    plotProj = ccrs.PlateCarree()
+    # extract unperturbed sea-level pressure
+    unpSlp = np.asarray(get_wrf_slp(unpHdl2)).squeeze()
+    # interpolate unperturbed heights to 850 and 500 hPa
+    unpZ850 = wrf.interplevel(field3d=wrf.getvar(unpHdl2,'z'),
+                              vert=wrf.getvar(unpHdl2,'p'),
+                              desiredlev=85000.,
+                              missing=np.nan,
+                              squeeze=True,
+                              meta=False)
+    unpZ500 = wrf.interplevel(field3d=wrf.getvar(unpHdl2,'z'),
+                              vert=wrf.getvar(unpHdl2,'p'),
+                              desiredlev=50000.,
+                              missing=np.nan,
+                              squeeze=True,
+                              meta=False)
+    # compute unperturbed 850-500 thickness
+    unpThk = unpZ500 - unpZ850
+    # compute precipitation
+    unpPrcp1 = np.asarray(unpHdl1.variables['RAINC']).squeeze() + np.asarray(unpHdl1.variables['RAINNC']).squeeze()
+    ptdPrcp1 = np.asarray(ptdHdl1.variables['RAINC']).squeeze() + np.asarray(ptdHdl1.variables['RAINNC']).squeeze()
+    unpPrcp2 = np.asarray(unpHdl2.variables['RAINC']).squeeze() + np.asarray(unpHdl2.variables['RAINNC']).squeeze()
+    ptdPrcp2 = np.asarray(ptdHdl2.variables['RAINC']).squeeze() + np.asarray(ptdHdl2.variables['RAINNC']).squeeze()
+    # generate figure
+    fig, ax = plt.subplots(ncols=1,nrows=1,figsize=(14,7), subplot_kw={'projection' : datProj})
+    slprng=np.arange(900.,1030.1,4.)
+    thkrng=np.arange(3700.,4500.1,50.)
+    tDiffRng=np.arange(-5., 5.01, 0.5).astype('float16')
+    mask = np.ones(np.shape(tDiffRng)).astype('bool')
+    mask[np.where(tDiffRng==0.)] = False
+
+    ax, (shd, cons, vec) = plan_section_plot(wrfHDL=unpHdl,
+                                            lat=lat,
+                                            lon=lon,
+                                            contVariableList=[unpSlp,unpThk],
+                                            contIntervalList=[slprng,thkrng], 
+                                            contColorList=['black','#b06407'],
+                                            contLineThicknessList=[0.75,0.75],
+                                            shadVariable=(ptdPrcp2-ptdPrcp1)-(unpPrcp2-unpPrcp1),
+                                            shadInterval=tDiffRng[mask],
+                                            shadAlpha=1.0,
+                                            datProj=datProj,
+                                            plotProj=plotProj,
+                                            shadCmap='seismic',
+                                            uVecVariable=None,
+                                            vVecVariable=None,
+                                            vectorThinning=None,
+                                            vecColor=None,
+                                            figax=ax)
+    # add contour labels to slp
+    ax.clabel(cons[0],levels=slprng[::2])
+    # save file
+    fig.savefig(figureName + '.png', bbox_inches='tight', facecolor='white')
+
+
+# In[281]:
+
+
+unpDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/final_runs/nov2019/R_mu/unperturbed/'
+posDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/final_runs/nov2019/R_mu/positive/uvTq/ptdi24/'
+dtInit = datetime.datetime(2019, 11, 25, 12)
+
+fcstHr1 = 0
+fcstHr2 = 1
+
+dtFcst = dtInit + datetime.timedelta(hours=fcstHr1)
+dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
+unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
+ptdFileFcst = posDir + 'wrfout_d01_' + dtFcstStr
+unpHdl1 = Dataset(unpFileFcst)
+ptdHdl1 = Dataset(ptdFileFcst)
+
+dtFcst = dtInit + datetime.timedelta(hours=fcstHr2)
+dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
+unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
+ptdFileFcst = posDir + 'wrfout_d01_' + dtFcstStr
+unpHdl2 = Dataset(unpFileFcst)
+ptdHdl2 = Dataset(ptdFileFcst)
+
+generate_figure_panel(unpHdl1, ptdHdl1, unpHdl2, ptdHdl2, 'test')
 
 
 # In[ ]:
