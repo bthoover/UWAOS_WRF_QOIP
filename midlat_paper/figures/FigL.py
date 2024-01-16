@@ -1,9 +1,9 @@
 # Figure L: Cross-section of perturbation omega, with plan-section perturbation mean 400-700 hPa geopotential height
 #           perturbation and perturbation temperature advection by the geostrophic wind, and mean wind speed for
-# a) most-intense simulation 3-hr forecast
-# b) most-intense simulation 6-hr forecast
-# c) most-intense simulation 9-hr forecast
-# d) most-intense simulation 12-hr forecast
+# a) most-intense simulation 0-hr forecast
+# b) most-intense simulation 3-hr forecast
+# c) most-intense simulation 6-hr forecast
+# d) most-intense simulation 9-hr forecast
 #
 # Cross-sections are designed to cut across height/t-adv mean perturbation and align across-shear
 import numpy as np
@@ -127,7 +127,7 @@ def right_panel(ax, payloadTuple):
     unpSmean = unpSmean / np.size(intLevs)
     # generate plan-section plot
     spdrng = np.arange(24.,100.1,8.)
-    hgtrng = np.arange(-50., 50.1, 5.).astype('float16')
+    hgtrng = np.arange(-100., 100.1, 10.).astype('float16')
     hgtrng = hgtrng[np.where(hgtrng!=0.)]
     shdrng=1.0E-04*np.arange(-16.,16.01,2.).astype('float16')
     mask = np.ones(np.shape(shdrng),dtype=bool)
@@ -227,7 +227,21 @@ if __name__ == "__main__":
     # define initial-condition datetime
     dtInit = datetime.datetime(2020, 3, 6, 12)
     
-    # FIG La: most-intense simulation 3-hr cross section of perturbation omega
+    # FIG Ta: most-intense simulation 0-hr cross section of perturbation omega
+    fcstHr = 0
+    dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
+    dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
+    unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
+    ptdFileFcst = ptdDir + 'wrfout_d01_' + dtFcstStr
+    unpHdl = Dataset(unpFileFcst)
+    ptdHdl = Dataset(ptdFileFcst)
+    latBeg = 50.0
+    lonBeg = -81.0
+    latEnd = 27.0
+    lonEnd = -88.5
+    generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGL_panel_A')
+    
+    # FIG Tb: most-intense simulation 3-hr cross section of perturbation omega
     fcstHr = 3
     dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
     dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
@@ -235,13 +249,13 @@ if __name__ == "__main__":
     ptdFileFcst = ptdDir + 'wrfout_d01_' + dtFcstStr
     unpHdl = Dataset(unpFileFcst)
     ptdHdl = Dataset(ptdFileFcst)
-    latBeg = 45.0
-    lonBeg = -79.0
-    latEnd = 25.0
-    lonEnd = -85.0
-    generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGL_panel_A')
+    latBeg = 50.0
+    lonBeg = -81.0
+    latEnd = 27.0
+    lonEnd = -84.5
+    generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGL_panel_B')
     
-    # FIG Lb: most-intense simulation 6-hr cross section of perturbation omega
+    # FIG Tc: most-intense simulation 6-hr cross section of perturbation omega
     fcstHr = 6
     dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
     dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
@@ -249,13 +263,13 @@ if __name__ == "__main__":
     ptdFileFcst = ptdDir + 'wrfout_d01_' + dtFcstStr
     unpHdl = Dataset(unpFileFcst)
     ptdHdl = Dataset(ptdFileFcst)
-    latBeg = 45.0
-    lonBeg = -75.0
-    latEnd = 25.0
-    lonEnd = -86.0
-    generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGL_panel_B')
+    latBeg = 50.0
+    lonBeg = -85.0
+    latEnd = 27.0
+    lonEnd = -80.5
+    generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGL_panel_C')
     
-    # FIG Lc: most-intense simulation 9-hr cross section of perturbation omega
+    # FIG Ld: most-intense simulation 9-hr cross section of perturbation omega
     fcstHr = 9
     dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
     dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
@@ -263,24 +277,10 @@ if __name__ == "__main__":
     ptdFileFcst = ptdDir + 'wrfout_d01_' + dtFcstStr
     unpHdl = Dataset(unpFileFcst)
     ptdHdl = Dataset(ptdFileFcst)
-    latBeg = 45.0
-    lonBeg = -75.0
-    latEnd = 25.0
-    lonEnd = -81.5
-    generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGL_panel_C')
-    
-    # FIG Ld: most-intense simulation 12-hr cross section of perturbation omega
-    fcstHr = 12
-    dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
-    dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
-    unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
-    ptdFileFcst = ptdDir + 'wrfout_d01_' + dtFcstStr
-    unpHdl = Dataset(unpFileFcst)
-    ptdHdl = Dataset(ptdFileFcst)
-    latBeg = 45.0
-    lonBeg = -81.0
-    latEnd = 25.0
-    lonEnd = -74.0
+    latBeg = 50.0
+    lonBeg = -87.0
+    latEnd = 27.0
+    lonEnd = -78.0
     generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGL_panel_D')
 #
 # end
