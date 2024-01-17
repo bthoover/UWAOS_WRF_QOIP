@@ -5082,7 +5082,7 @@ ptdHdl = Dataset(ptdFile)
 generate_figure_panel(unpHdl, ptdHdl)
 
 
-# In[365]:
+# In[476]:
 
 
 # Figure L: Cross-section of perturbation omega, with plan-section perturbation mean 400-700 hPa geopotential height
@@ -5119,7 +5119,7 @@ from scipy.interpolate import interp1d
 #
 # define internal functions
 #
-# define function for plan-section plot: 250 hPa geopotential height and wind-speed
+# define function for plan-section plot
 def right_panel(ax, payloadTuple):
     # expand payloadTuple into unpHdl and ptdHdl, and interpolation level
     unpHdl = payloadTuple[0]
@@ -5138,6 +5138,15 @@ def right_panel(ax, payloadTuple):
     # compute potential vorticity
     unpPvor = wrf.getvar(unpHdl,'pvo')
     ptdPvor = wrf.getvar(ptdHdl,'pvo')
+    # compute unperturbed omega
+    w = wrf.getvar(unpHdl,'omega')
+    # interpolate omega to intLev
+    unpOmegaLev = wrf.interplevel(field3d=w,
+                            vert=wrf.getvar(unpHdl,'p'),
+                            desiredlev=40000.,
+                            missing=np.nan,
+                            squeeze=True,
+                            meta=False)
     # interpolate potential vorticity to intLev
     unpPvorLev = wrf.interplevel(field3d=unpPvor,
                                  vert=wrf.getvar(unpHdl,'p'),
@@ -5169,24 +5178,18 @@ def right_panel(ax, payloadTuple):
     # compute unperturbed sea-level pressure
     unpSlp = get_wrf_slp(unpHdl)
     #
-    dynrng = np.arange(-2., 10.1, 0.5)
-    #
     shdrng = np.arange(-4.,4.01,0.5).astype('float16')
-    negMask = np.ones(np.shape(shdrng),dtype='bool')
-    negMask[np.where(shdrng<=0.)] = False
-    posMask = np.ones(np.shape(shdrng),dtype='bool')
-    posMask[np.where(shdrng>=0.)] = False
-    spdrng=[36., 54., 72., 90.]
-    defrng=1.0E-05*np.arange(5.,75.1,10.)
+    mask = np.ones(np.shape(shdrng),dtype='bool')
+    mask[np.where(shdrng==0.)] = False
+    spdrng=np.arange(36., 100.1, 8.)
+    omgrng=np.arange(0.5,3.01,0.5)
     slprng=np.arange(1004., 1024.1, 4.)
     #
-    shd=ax.contourf(lon, lat, unpPvorLev, levels=dynrng, cmap='gray', vmin=np.min(dynrng), vmax=np.max(dynrng), transform=plotProj)
-    ax.contourf(lon, lat, ptdPvorLev-unpPvorLev, levels=shdrng[posMask], cmap='seismic', vmin=np.min(shdrng), vmax=np.max(shdrng), transform=plotProj)
-    ax.contourf(lon, lat, ptdPvorLev-unpPvorLev, levels=shdrng[negMask], cmap='seismic', vmin=np.min(shdrng), vmax=np.max(shdrng), transform=plotProj)
-    con1=ax.contour(lon, lat, unpSpdLev, levels=spdrng, colors='black', transform=plotProj, linewidths=3.)
-    con2=ax.contour(lon, lat, unpSpdLev, levels=spdrng, colors='#ffd500', transform=plotProj, linewidths=1.)
+    shd=ax.contourf(lon, lat, ptdPvorLev-unpPvorLev, levels=shdrng[mask], cmap='seismic', vmin=np.min(shdrng), vmax=np.max(shdrng), transform=plotProj)
+    ax.contour(lon, lat, unpOmegaLev, levels=omgrng, colors='black', transform=plotProj, linewidths=1.0)
+    con=ax.contour(lon, lat, unpSpdLev, levels=spdrng, colors='green', transform=plotProj, linewidths=1.5)
     ax.add_feature(cfeature.COASTLINE, edgecolor='brown', linewidth=1.5)
-    ax.clabel(con2,levels=spdrng)
+    ax.clabel(con,levels=spdrng)
     # define lat/lon lines
     latLines = np.arange(-90., 90., 5.)
     lonLines = np.arange(-180., 180. ,5.)
@@ -5256,10 +5259,10 @@ def generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, figure
                                  xSectShadInterval=xSectShadInterval,
                                  datProj=datProj,
                                  plotProj=plotProj,
-                                 planSectPlotTuple=(right_panel, (unpHdl, ptdHdl, 50000.)),
+                                 planSectPlotTuple=(right_panel, (unpHdl, ptdHdl, 40000.)),#40000.)),
                                  presLevMin=10000.,
                                  xSectTitleStr=None,
-                                 xLineColorList=['lime']
+                                 xLineColorList=['black']
                                 )
 
     print('hour {:d}'.format(fcstHr))
@@ -5285,9 +5288,9 @@ if __name__ == "__main__":
     unpHdl = Dataset(unpFileFcst)
     ptdHdl = Dataset(ptdFileFcst)
     latBeg = 63.0
-    lonBeg = -174.5 #-164.0
+    lonBeg = -168.0
     latEnd = 40.0
-    lonEnd = -157.0  #-167.0
+    lonEnd = -158.5
     generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGU_panel_A')
     
     # FIG Ua: most-intense simulation 3-hr cross section of perturbation omega
@@ -5298,10 +5301,10 @@ if __name__ == "__main__":
     ptdFileFcst = ptdDir + 'wrfout_d01_' + dtFcstStr
     unpHdl = Dataset(unpFileFcst)
     ptdHdl = Dataset(ptdFileFcst)
-    latBeg = 63.0 #63.0
-    lonBeg = -170.5 #-162.0
-    latEnd = 40.0 #40.0
-    lonEnd = -154.5 #-165.0
+    latBeg = 63.0
+    lonBeg = -164.5 
+    latEnd = 40.0 
+    lonEnd = -157.5 
     generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGU_panel_A')
     
     # FIG Ua: most-intense simulation 6-hr cross section of perturbation omega
@@ -5312,14 +5315,10 @@ if __name__ == "__main__":
     ptdFileFcst = ptdDir + 'wrfout_d01_' + dtFcstStr
     unpHdl = Dataset(unpFileFcst)
     ptdHdl = Dataset(ptdFileFcst)
-    #latBeg = 63.0
-    #lonBeg = -164.5
-    #latEnd = 40.0
-    #lonEnd = -155.5
     latBeg = 62.0
-    lonBeg = -166.0
+    lonBeg = -162.0
     latEnd = 38.0
-    lonEnd = -150.0
+    lonEnd = -154.0
     generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGU_panel_A')
     
     # FIG Ua: most-intense simulation 6-hr cross section of perturbation omega
@@ -5333,14 +5332,44 @@ if __name__ == "__main__":
     latBeg = 63.0
     lonBeg = -160.0
     latEnd = 40.0
-    lonEnd = -150.0
+    lonEnd = -151.5
     generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGU_panel_A')
 #
 # end
 #
 
 
-# In[366]:
+# In[469]:
+
+
+w = wrf.getvar(unpHdl,'omega')
+unpOmegaLev = wrf.interplevel(field3d=w,
+                            vert=wrf.getvar(unpHdl,'p'),
+                            desiredlev=40000.,
+                            missing=np.nan,
+                            squeeze=True,
+                            meta=False)
+u,v=get_uvmet(unpHdl)
+spd=(u**2.+v**2.)**0.5
+slev = wrf.interplevel(field3d=spd,
+                            vert=wrf.getvar(unpHdl,'p'),
+                            desiredlev=40000.,
+                            missing=np.nan,
+                            squeeze=True,
+                            meta=False)
+plt.contour(unpOmegaLev,levels=np.arange(0.5,3.,0.25),colors='black')
+plt.contour(slev,levels=np.arange(36.,100.1,8.),colors='green')
+#plt.colorbar()
+plt.show()
+
+
+# In[ ]:
+
+
+
+
+
+# In[393]:
 
 
 # Figure L: Cross-section of perturbation omega, with plan-section perturbation mean 400-700 hPa geopotential height
@@ -5572,7 +5601,7 @@ if __name__ == "__main__":
     # define initial-condition datetime
     dtInit = datetime.datetime(2019, 11, 25, 12)
     
-    # FIG Ta: most-intense simulation 6-hr cross section of perturbation omega
+    # FIG Ua: most-intense simulation 0-hr cross section of perturbation omega
     fcstHr = 0
     dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
     dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
@@ -5581,12 +5610,12 @@ if __name__ == "__main__":
     unpHdl = Dataset(unpFileFcst)
     ptdHdl = Dataset(ptdFileFcst)
     latBeg = 63.0
-    lonBeg = -174.5 #-164.0
+    lonBeg = -168.0
     latEnd = 40.0
-    lonEnd = -157.0  #-167.0
-    generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGT_panel_A')
+    lonEnd = -158.5
+    generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGU_panel_A')
     
-    # FIG Tb: most-intense simulation 12-hr cross section of perturbation omega
+    # FIG Ua: most-intense simulation 3-hr cross section of perturbation omega
     fcstHr = 3
     dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
     dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
@@ -5594,13 +5623,13 @@ if __name__ == "__main__":
     ptdFileFcst = ptdDir + 'wrfout_d01_' + dtFcstStr
     unpHdl = Dataset(unpFileFcst)
     ptdHdl = Dataset(ptdFileFcst)
-    latBeg = 63.0 #63.0
-    lonBeg = -170.5 #-162.0
-    latEnd = 40.0 #40.0
-    lonEnd = -154.5 #-165.0
-    generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGT_panel_B')
+    latBeg = 63.0
+    lonBeg = -164.5 
+    latEnd = 40.0 
+    lonEnd = -157.5 
+    generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGU_panel_A')
     
-    # FIG Tc: most-intense simulation 18-hr cross section of perturbation omega
+    # FIG Ua: most-intense simulation 6-hr cross section of perturbation omega
     fcstHr = 6
     dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
     dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
@@ -5609,12 +5638,12 @@ if __name__ == "__main__":
     unpHdl = Dataset(unpFileFcst)
     ptdHdl = Dataset(ptdFileFcst)
     latBeg = 62.0
-    lonBeg = -166.0
+    lonBeg = -162.0
     latEnd = 38.0
-    lonEnd = -150.0
-    generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGT_panel_C')
+    lonEnd = -154.0
+    generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGU_panel_A')
     
-    # FIG Ld: most-intense simulation 24-hr cross section of perturbation omega
+    # FIG Ua: most-intense simulation 6-hr cross section of perturbation omega
     fcstHr = 9
     dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
     dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
@@ -5625,8 +5654,8 @@ if __name__ == "__main__":
     latBeg = 63.0
     lonBeg = -160.0
     latEnd = 40.0
-    lonEnd = -150.0
-    generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGT_panel_D')
+    lonEnd = -151.5
+    generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGU_panel_A')
 #
 # end
 #

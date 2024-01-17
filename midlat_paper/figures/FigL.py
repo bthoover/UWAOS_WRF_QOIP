@@ -32,7 +32,7 @@ from scipy.interpolate import interp1d
 #
 # define internal functions
 #
-# define function for plan-section plot: 250 hPa geopotential height and wind-speed
+# define function for plan-section plot
 def right_panel(ax, payloadTuple):
     # expand payloadTuple into unpHdl and ptdHdl, and interpolation level
     unpHdl = payloadTuple[0]
@@ -227,7 +227,7 @@ if __name__ == "__main__":
     # define initial-condition datetime
     dtInit = datetime.datetime(2020, 3, 6, 12)
     
-    # FIG Ta: most-intense simulation 0-hr cross section of perturbation omega
+    # FIG La: most-intense simulation 0-hr cross section of perturbation omega
     fcstHr = 0
     dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
     dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
@@ -241,7 +241,7 @@ if __name__ == "__main__":
     lonEnd = -88.5
     generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGL_panel_A')
     
-    # FIG Tb: most-intense simulation 3-hr cross section of perturbation omega
+    # FIG Lb: most-intense simulation 13hr cross section of perturbation omega
     fcstHr = 3
     dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
     dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
@@ -250,12 +250,12 @@ if __name__ == "__main__":
     unpHdl = Dataset(unpFileFcst)
     ptdHdl = Dataset(ptdFileFcst)
     latBeg = 50.0
-    lonBeg = -81.0
+    lonBeg = -72.5
     latEnd = 27.0
-    lonEnd = -84.5
+    lonEnd = -87.0
     generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGL_panel_B')
     
-    # FIG Tc: most-intense simulation 6-hr cross section of perturbation omega
+    # FIG Lc: most-intense simulation 6-hr cross section of perturbation omega
     fcstHr = 6
     dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
     dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
@@ -264,9 +264,9 @@ if __name__ == "__main__":
     unpHdl = Dataset(unpFileFcst)
     ptdHdl = Dataset(ptdFileFcst)
     latBeg = 50.0
-    lonBeg = -85.0
+    lonBeg = -73.5
     latEnd = 27.0
-    lonEnd = -80.5
+    lonEnd = -84.0
     generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGL_panel_C')
     
     # FIG Ld: most-intense simulation 9-hr cross section of perturbation omega
@@ -278,9 +278,9 @@ if __name__ == "__main__":
     unpHdl = Dataset(unpFileFcst)
     ptdHdl = Dataset(ptdFileFcst)
     latBeg = 50.0
-    lonBeg = -87.0
-    latEnd = 27.0
-    lonEnd = -78.0
+    lonBeg = -78.0
+    latEnd = 26.0
+    lonEnd = -79.5
     generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGL_panel_D')
 #
 # end

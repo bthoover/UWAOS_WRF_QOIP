@@ -1,5 +1,5 @@
-# Figure K: Cross-section of perturbation potential vorticity, with plan-section perturbation 500 hPa potential
-#           vorticity and basic-state PV, and 500 hPa wind speed for
+# Figure K: Cross-section of perturbation PV, with plan-section 550 hPa PV perturbation and
+#           unperturbed wind speed and omega
 # a) most-intense simulation 0-hr forecast
 # b) most-intense simulation 3-hr forecast
 # c) most-intense simulation 6-hr forecast
@@ -32,7 +32,7 @@ from scipy.interpolate import interp1d
 #
 # define internal functions
 #
-# define function for plan-section plot: 250 hPa geopotential height and wind-speed
+# define function for plan-section plot
 def right_panel(ax, payloadTuple):
     # expand payloadTuple into unpHdl and ptdHdl, and interpolation level
     unpHdl = payloadTuple[0]
@@ -51,6 +51,15 @@ def right_panel(ax, payloadTuple):
     # compute potential vorticity
     unpPvor = wrf.getvar(unpHdl,'pvo')
     ptdPvor = wrf.getvar(ptdHdl,'pvo')
+    # compute unperturbed omega
+    w = wrf.getvar(unpHdl,'omega')
+    # interpolate omega to intLev
+    unpOmegaLev = wrf.interplevel(field3d=w,
+                            vert=wrf.getvar(unpHdl,'p'),
+                            desiredlev=40000.,
+                            missing=np.nan,
+                            squeeze=True,
+                            meta=False)
     # interpolate potential vorticity to intLev
     unpPvorLev = wrf.interplevel(field3d=unpPvor,
                                  vert=wrf.getvar(unpHdl,'p'),
@@ -80,22 +89,17 @@ def right_panel(ax, payloadTuple):
     # compute wind speed on intLev
     unpSpdLev = np.sqrt(unpUwdLev**2. + unpVwdLev**2.)
     #
-    dynrng = np.arange(-2., 10.1, 0.5)
-    #
     shdrng = np.arange(-4.,4.01,0.5).astype('float16')
-    negMask = np.ones(np.shape(shdrng),dtype='bool')
-    negMask[np.where(shdrng<=0.)] = False
-    posMask = np.ones(np.shape(shdrng),dtype='bool')
-    posMask[np.where(shdrng>=0.)] = False
-    spdrng=[36., 54., 72., 90.]
+    mask = np.ones(np.shape(shdrng),dtype='bool')
+    mask[np.where(shdrng==0.)] = False
+    spdrng=np.arange(36., 100.1, 8.)
+    omgrng=np.arange(0.5,3.01,0.5)
     #
-    shd=ax.contourf(lon, lat, unpPvorLev, levels=dynrng, cmap='gray', vmin=np.min(dynrng), vmax=np.max(dynrng), transform=plotProj)
-    ax.contourf(lon, lat, ptdPvorLev-unpPvorLev, levels=shdrng[posMask], cmap='seismic', vmin=np.min(shdrng), vmax=np.max(shdrng), transform=plotProj)
-    ax.contourf(lon, lat, ptdPvorLev-unpPvorLev, levels=shdrng[negMask], cmap='seismic', vmin=np.min(shdrng), vmax=np.max(shdrng), transform=plotProj)
-    con1=ax.contour(lon, lat, unpSpdLev, levels=spdrng, colors='black', transform=plotProj, linewidths=3.)
-    con2=ax.contour(lon, lat, unpSpdLev, levels=spdrng, colors='#ffd500', transform=plotProj, linewidths=1.)
+    shd=ax.contourf(lon, lat, ptdPvorLev-unpPvorLev, levels=shdrng[mask], cmap='seismic', vmin=np.min(shdrng), vmax=np.max(shdrng), transform=plotProj)
+    ax.contour(lon, lat, unpOmegaLev, levels=omgrng, colors='black', transform=plotProj, linewidths=1.0)
+    con=ax.contour(lon, lat, unpSpdLev, levels=spdrng, colors='green', transform=plotProj, linewidths=1.5)
     ax.add_feature(cfeature.COASTLINE, edgecolor='brown', linewidth=1.5)
-    ax.clabel(con2,levels=spdrng)
+    ax.clabel(con,levels=spdrng)
     # define lat/lon lines
     latLines = np.arange(-90., 90., 5.)
     lonLines = np.arange(-180., 180. ,5.)
@@ -165,10 +169,10 @@ def generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, figure
                                  xSectShadInterval=xSectShadInterval,
                                  datProj=datProj,
                                  plotProj=plotProj,
-                                 planSectPlotTuple=(right_panel, (unpHdl, ptdHdl, 50000.)),
+                                 planSectPlotTuple=(right_panel, (unpHdl, ptdHdl, 55000.)),
                                  presLevMin=10000.,
                                  xSectTitleStr=None,
-                                 xLineColorList=['lime']
+                                 xLineColorList=['black']
                                 )
 
     print('hour {:d}'.format(fcstHr))
@@ -208,9 +212,9 @@ if __name__ == "__main__":
     unpHdl = Dataset(unpFileFcst)
     ptdHdl = Dataset(ptdFileFcst)
     latBeg = 50.0
-    lonBeg = -81.0
+    lonBeg = -72.5
     latEnd = 27.0
-    lonEnd = -84.5
+    lonEnd = -87.0
     generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGK_panel_B')
     
     # FIG Kc: most-intense simulation 6-hr cross section of perturbation PV
@@ -222,12 +226,12 @@ if __name__ == "__main__":
     unpHdl = Dataset(unpFileFcst)
     ptdHdl = Dataset(ptdFileFcst)
     latBeg = 50.0
-    lonBeg = -85.0
+    lonBeg = -73.5
     latEnd = 27.0
-    lonEnd = -80.5
+    lonEnd = -84.0
     generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGK_panel_C')
     
-    # FIG Kd: most-intense simulation 9-hr cross section of perturbation PV
+    # FIG Kd: most-intense simulation 6-hr cross section of perturbation PV
     fcstHr = 9
     dtFcst = dtInit + datetime.timedelta(hours=fcstHr)
     dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
@@ -236,9 +240,9 @@ if __name__ == "__main__":
     unpHdl = Dataset(unpFileFcst)
     ptdHdl = Dataset(ptdFileFcst)
     latBeg = 50.0
-    lonBeg = -87.0
-    latEnd = 27.0
-    lonEnd = -78.0
+    lonBeg = -78.0
+    latEnd = 26.0
+    lonEnd = -79.5
     generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'FIGK_panel_D')
 #
 # end
