@@ -5507,6 +5507,123 @@ if __name__ == "__main__":
 #
 
 
+# In[102]:
+
+
+import numpy as np
+import matplotlib.pyplot as plt
+from netCDF4 import Dataset
+from analysis_dependencies import get_wrf_slp
+from analysis_dependencies import gen_wrf_proj
+from analysis_dependencies import gen_cartopy_proj
+from analysis_dependencies import plan_section_plot
+import datetime
+import wrf
+import cartopy
+from cartopy import crs as ccrs
+from cartopy import feature as cfeature
+import matplotlib
+import matplotlib.ticker as mticker
+from cartopy.mpl.gridliner import LONGITUDE_FORMATTER, LATITUDE_FORMATTER
+import xarray as xr
+
+# For a selected forecast time, plot the sea-level pressure, 850-500 hPa thickness, and precipitation
+def generate_figure_panel(unpHdl1, ptdHdl1, unpHdl2, ptdHdl2, figureName):
+    # extract latitude and longitude, set longitude to 0 to 360 deg format 
+    lat = np.asarray(unpHdl1.variables['XLAT']).squeeze()
+    lon = np.asarray(unpHdl1.variables['XLONG']).squeeze()
+    fix = np.where(lon < 0.)
+    lon[fix] = lon[fix] + 360.
+    # define data and plot projection
+    datProj = gen_cartopy_proj(unpHdl1)
+    plotProj = ccrs.PlateCarree()
+    # extract unperturbed sea-level pressure
+    unpSlp = np.asarray(get_wrf_slp(unpHdl2)).squeeze()
+    # interpolate unperturbed heights to 850 and 500 hPa
+    unpZ850 = wrf.interplevel(field3d=wrf.getvar(unpHdl2,'z'),
+                              vert=wrf.getvar(unpHdl2,'p'),
+                              desiredlev=85000.,
+                              missing=np.nan,
+                              squeeze=True,
+                              meta=False)
+    unpZ500 = wrf.interplevel(field3d=wrf.getvar(unpHdl2,'z'),
+                              vert=wrf.getvar(unpHdl2,'p'),
+                              desiredlev=50000.,
+                              missing=np.nan,
+                              squeeze=True,
+                              meta=False)
+    # compute unperturbed 850-500 thickness
+    unpThk = unpZ500 - unpZ850
+    # compute precipitation
+    unpPrcp1 = np.asarray(unpHdl1.variables['RAINC']).squeeze() + np.asarray(unpHdl1.variables['RAINNC']).squeeze()
+    ptdPrcp1 = np.asarray(ptdHdl1.variables['RAINC']).squeeze() + np.asarray(ptdHdl1.variables['RAINNC']).squeeze()
+    unpPrcp2 = np.asarray(unpHdl2.variables['RAINC']).squeeze() + np.asarray(unpHdl2.variables['RAINNC']).squeeze()
+    ptdPrcp2 = np.asarray(ptdHdl2.variables['RAINC']).squeeze() + np.asarray(ptdHdl2.variables['RAINNC']).squeeze()
+    # generate figure
+    fig, ax = plt.subplots(ncols=1,nrows=1,figsize=(14,7), subplot_kw={'projection' : datProj})
+    slprng=np.arange(900.,1030.1,4.)
+    thkrng=np.arange(3700.,4500.1,50.)
+    tDiffRng=np.arange(-15., 15.01, 3.0).astype('float16')
+    mask = np.ones(np.shape(tDiffRng)).astype('bool')
+    mask[np.where(tDiffRng==0.)] = False
+
+    ax, (shd, cons, vec) = plan_section_plot(wrfHDL=unpHdl,
+                                            lat=lat,
+                                            lon=lon,
+                                            contVariableList=[unpSlp,unpThk],
+                                            contIntervalList=[slprng,thkrng], 
+                                            contColorList=['black','#b06407'],
+                                            contLineThicknessList=[0.75,0.75],
+                                            shadVariable=(ptdPrcp2-ptdPrcp1)-(unpPrcp2-unpPrcp1),
+                                            shadInterval=tDiffRng[mask],
+                                            shadAlpha=1.0,
+                                            datProj=datProj,
+                                            plotProj=plotProj,
+                                            shadCmap='seismic',
+                                            uVecVariable=None,
+                                            vVecVariable=None,
+                                            vectorThinning=None,
+                                            vecColor=None,
+                                            figax=ax)
+    # add contour labels to slp
+    ax.clabel(cons[0],levels=slprng[::2])
+    # save file
+    fig.savefig(figureName + '.png', bbox_inches='tight', facecolor='white')
+
+
+# In[104]:
+
+
+unpDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/final_runs/march2020/R_mu/unperturbed/'
+posDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/final_runs/march2020/R_mu/positive/uvTq/ptdi22/'
+dtInit = datetime.datetime(2020, 3, 6, 12)
+
+fcstHr1 = 0
+fcstHr2 = 12
+
+dtFcst = dtInit + datetime.timedelta(hours=fcstHr1)
+dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
+unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
+ptdFileFcst = posDir + 'wrfout_d01_' + dtFcstStr
+unpHdl1 = Dataset(unpFileFcst)
+ptdHdl1 = Dataset(ptdFileFcst)
+
+dtFcst = dtInit + datetime.timedelta(hours=fcstHr2)
+dtFcstStr = datetime.datetime.strftime(dtFcst,'%Y-%m-%d_%H:00:00')
+unpFileFcst = unpDir + 'wrfout_d01_' + dtFcstStr
+ptdFileFcst = posDir + 'wrfout_d01_' + dtFcstStr
+unpHdl2 = Dataset(unpFileFcst)
+ptdHdl2 = Dataset(ptdFileFcst)
+
+generate_figure_panel(unpHdl1, ptdHdl1, unpHdl2, ptdHdl2, 'test')
+
+
+# In[ ]:
+
+
+
+
+
 # In[ ]:
 
 
