@@ -1,6 +1,5 @@
 # Figure H
-# a) initial and final-forecast perturbation energy norm (u', v', T') profiles of least-intense simulation
-# b) as panel-a, but for most-intense simulation
+# initial and final-forecast perturbation energy norm (u', v', T') profiles of most-intense simulation
 import numpy as np
 import matplotlib.pyplot as plt
 from netCDF4 import Dataset
@@ -91,20 +90,13 @@ def generate_figure_panel(unpInitHdl, ptdInitHdl, unpFcstHdl, ptdFcstHdl, figure
 # begin
 #
 if __name__ == "__main__":
-    # Panel A: inital/final energy norm profiles for least-intense simulaiton
-    dataDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/case_archives/march2020/R_mu/negative/uvTq'
-    unpInitHdl = Dataset(dataDir + '/wrfinput_d01_unpi00')
-    ptdInitHdl = Dataset(dataDir + '/wrfinput_d01_ptdi14')
-    unpFcstHdl = Dataset(dataDir + '/wrfout_d01_unpi00')
-    ptdFcstHdl = Dataset(dataDir + '/wrfout_d01_ptdi14')
-    generate_figure_panel(unpInitHdl, ptdInitHdl, unpFcstHdl, ptdFcstHdl, 'FIGH_panel_A')
-    # Panel A: inital/final energy norm profiles for most-intense simulaiton
+    # Panel: inital/final energy norm profiles for most-intense simulaiton
     dataDir = '/home/bhoover/UWAOS/WRF_QOIP/data_repository/case_archives/march2020/R_mu/positive/uvTq'
     unpInitHdl = Dataset(dataDir + '/wrfinput_d01_unpi00')
     ptdInitHdl = Dataset(dataDir + '/wrfinput_d01_ptdi22')
     unpFcstHdl = Dataset(dataDir + '/wrfout_d01_unpi00')
     ptdFcstHdl = Dataset(dataDir + '/wrfout_d01_ptdi22')
-    generate_figure_panel(unpInitHdl, ptdInitHdl, unpFcstHdl, ptdFcstHdl, 'FIGH_panel_B')
+    generate_figure_panel(unpInitHdl, ptdInitHdl, unpFcstHdl, ptdFcstHdl, 'FIGH_panel')
 #
 # end
 #
