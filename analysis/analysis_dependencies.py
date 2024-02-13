@@ -1771,8 +1771,9 @@ def interpolate_sigma_levels(field3D, pres3D, sfcPresDonor, topPresDonor, sigmaL
 # DEPENDENCIES:
 #   numpy
 def compute_hires_border(fieldLores, gridHires, i_start, j_start, resRatio):
+    import numpy as np
     # define hi-res grid dimensions
-    j_siz, i_siz = np.shape(fieldHires)
+    j_siz, i_siz = np.shape(gridHires)
     # generate a hi-res grid of zero-values
     borderHires = np.zeros((j_siz, i_siz))
     # SOUTHERN BORDER
@@ -1903,10 +1904,9 @@ def compute_inverse_laplacian_with_boundaries(wrfHDL, frc, boundaries=None):
         for j in range(nxm2):
             index=i*nxm2+j #................................................................. TEMPORARY VARIABLE: index of current [i,j] point in forcevec
             # Adjust values in forcevec based on prescribed boundary conditions
-            #if(i==0) : forcevec[index] = forcevec[index] - psib[i,j-2]/ds_x**2.
-            #if(i==nxm2-1): forcevec[index] = forcevec[index] - psib[i,j+2]/ds_x**2.
-            #if(j==0): forcevec[index] = forcevec[index] - psib[i-2,j]/ds_y**2
-            #if(j==nym2-1): forcevec[index] = forcevec[index] - psib[i+2,j]/ds_y**2.
+            # NOTE: psib is larger than forcevec by 2 in both i- and j-direction, so
+            #       i==0 or j==0 corresponds to lower border for both grids, but upper border
+            #       for psib is at i+2 and j+2 relative to forcevec.
             if(i==0) : forcevec[index] = forcevec[index] - psib[i,j]/ds_x**2.
             if(i==nym2-1): forcevec[index] = forcevec[index] - psib[i+2,j]/ds_x**2.
             if(j==0): forcevec[index] = forcevec[index] - psib[i,j]/ds_y**2
