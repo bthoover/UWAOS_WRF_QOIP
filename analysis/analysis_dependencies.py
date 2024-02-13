@@ -1748,3 +1748,81 @@ def interpolate_sigma_levels(field3D, pres3D, sfcPresDonor, topPresDonor, sigmaL
         interp3D = dim_coord_swap(interp3D, presDonor)
     # return interp3D
     return interp3D
+
+
+### TEST FUNCTIONS, NOT NECESSARILY COMPLETED ###
+
+# compute_hires_border: create a 2D field the same dimension as the hi-res grid that is
+#                       zero in the interior and along the border the values are set to
+#                       values estimated from linearly-interpolating the lo-res grid
+#                       values at the borders.
+#
+# INPUTS:
+#   fieldLores: 2D [lon,lat] field on lo-res grid
+#   gridHires: 2D [lon,lat] grid of ANY VARIABLE on hi-res grid (we just need the grid dimensions here)
+#   i_start: i-point on lo-res grid that defines the southwest corner of hi-res grid
+#   j_start: j-point on lo-res grid that defines the southwest corder of hi-res grid
+#   resRatio: ratio of grid-resolutions == [hi-res]:[lo-res]
+#
+# OUTPUTS:
+#   borderHires: 2D [lon,lat] field on hi-res grid, zero on interior and borders informed
+#                from lo-res grid
+#
+# DEPENDENCIES:
+#   numpy
+def compute_hires_border(fieldLores, gridHires, i_start, j_start, resRatio):
+    # define hi-res grid dimensions
+    j_siz, i_siz = np.shape(fieldHires)
+    # generate a hi-res grid of zero-values
+    borderHires = np.zeros((j_siz, i_siz))
+    # SOUTHERN BORDER
+    # define lo-res components of southern border
+    lr1 = fieldLores[j_start-1,i_start-1:int(i_start-1+i_siz/resRatio)]
+    lr2 = fieldLores[j_start-2,i_start-1:int(i_start-1+i_siz/resRatio)]
+    # blend lr1 and lr2 to define southern border in lo-res
+    borderLores = 0.667*lr1 + 0.333*lr2
+    # interpolate borderLores to hi-res grid using linear interpolation and resRatio
+    xLores = np.arange(np.size(lr1))
+    xHires = np.arange(resRatio * np.size(lr1)) / resRatio
+    y = np.interp(xHires, xLores, borderLores)
+    # commit y to borderHires along southern border
+    borderHires[0,:] = y
+    # NORTHERN BORDER
+    # define lo-res components of northern border
+    lr1 = fieldLores[int(j_start-2+j_siz/resRatio),i_start-1:int(i_start-1+i_siz/resRatio)]
+    lr2 = fieldLores[int(j_start-1+j_siz/resRatio),i_start-1:int(i_start-1+i_siz/resRatio)]
+    # blend lr1 and lr2 to define northern border in lo-res
+    borderLores = 0.667*lr1 + 0.333*lr2
+    # interpolate borderLores to hi-res grid using linear interpolation and resRatio
+    xLores = np.arange(np.size(lr1))
+    xHires = np.arange(resRatio * np.size(lr1)) / resRatio
+    y = np.interp(xHires, xLores, borderLores)
+    # commit y to borderHires along northern border
+    borderHires[j_siz-1,:] = y
+    # WESTERN BORDER
+    # define lo-res components of western border
+    lr1 = fieldLores[j_start-1:int(j_start-1+j_siz/resRatio),i_start-1]
+    lr2 = fieldLores[j_start-2:int(j_start-2+j_siz/resRatio),i_start-2]
+    # blend lr1 and lr2 to define western border in lo-res
+    borderLores = 0.667*lr1 + 0.333*lr2
+    # interpolate borderLores to hi-res grid using linear interpolation and resRatio
+    xLores = np.arange(np.size(lr1))
+    xHires = np.arange(resRatio * np.size(lr1)) / resRatio
+    y = np.interp(xHires, xLores, borderLores)
+    # commit y to borderHires along western border
+    borderHires[:,0] = y
+    # EASTERN BORDER
+    # define lo-res components of eastern border
+    lr1 = fieldLores[j_start-1:int(j_start-1+j_siz/resRatio),int(i_start-1+i_siz/resRatio)]
+    lr2 = fieldLores[j_start-2:int(j_start-2+j_siz/resRatio),int(i_start-2+i_siz/resRatio)]
+    # blend lr1 and lr2 to define eastern border in lo-res
+    borderLores = 0.667*lr2 + 0.333*lr1
+    # interpolate borderLores to hi-res grid using linear interpolation and resRatio
+    xLores = np.arange(np.size(lr1))
+    xHires = np.arange(resRatio * np.size(lr1)) / resRatio
+    y = np.interp(xHires, xLores, borderLores)
+    # commit y to borderHires along eastern border
+    borderHires[:,i_siz-1] = y
+    # return borderHires
+    return borderHires
+
