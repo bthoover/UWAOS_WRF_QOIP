@@ -1939,7 +1939,10 @@ def compute_inverse_laplacian_with_boundaries(wrfHDL, frc, boundaries=None):
     # Compute transpose (adjoint) of laplacian operator
     laps = lap.T #........................................................................... transpose of lap
     # Define initial guess of psi
-    psi0 = np.ones((nym2, nxm2), dtype=np.float64) #......................................... initial guess of psi (all ones)
+    if boundaries is not None:
+        psi0 = boundaries[1:ny-1,1:nx-1]
+    else:
+        psi0 = np.ones((nym2, nxm2), dtype=np.float64) #......................................... initial guess of psi (all ones)
     # Define laplacian and transpose of laplacian operators
     LAP = lap
     LAPS = laps
