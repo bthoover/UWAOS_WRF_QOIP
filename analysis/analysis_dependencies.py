@@ -739,6 +739,9 @@ def gen_cartopy_proj(wrfHDL, cenLat=None, cenLon=None):
 # lonBeg: beginning longitude of cross-section (deg)
 # latEnd: ending latitude of cross-section (deg)
 # lonEnd: ending longitude of cross-section (deg)
+# OPTIONAL INPUTS:
+# presLevMin: minimum pressure level of cross-section (default 10000. Pa)
+# presLevMax: maximum pressure level of cross-section (default 102000. Pa)
 #
 # OUTPUTS:
 #
@@ -753,7 +756,7 @@ def gen_cartopy_proj(wrfHDL, cenLat=None, cenLon=None):
 # xarray (implicit, also a dependency of wrf-python)
 # analysis_dependencies.gen_wrf_proj()
 # analysis_dependencies.dim_coord_swap()
-def get_xsect(wrfHDL, var3D, latBeg, lonBeg, latEnd, lonEnd):
+def get_xsect(wrfHDL, var3D, latBeg, lonBeg, latEnd, lonEnd, presLevMin=10000., presLevMax=102000.):
     import wrf
     import numpy as np
     # draw pressure from wrf.getvar() for comparison of dimensions/coordinates
@@ -779,7 +782,7 @@ def get_xsect(wrfHDL, var3D, latBeg, lonBeg, latEnd, lonEnd):
     if not dimCoordEqual:
         var3D = dim_coord_swap(var3D,p)
     # define inputs to cross-section
-    plevs = np.arange(10000., 102000.1, 5000.)  # levels
+    plevs = np.arange(presLevMin, presLevMax+0.1, 5000.)  # levels
     stag = 'm'  # stagger
     proj = gen_wrf_proj(wrfHDL)  # projection
     ptBeg = wrf.CoordPair(lat=latBeg, lon=lonBeg)  # start_point
@@ -1118,7 +1121,8 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
         # shading
         xSectShad, latList, lonList = get_xsect(wrfHDL,
                                                 xSectShadVariable,
-                                                latBeg, lonBeg, latEnd, lonEnd)
+                                                latBeg, lonBeg, latEnd, lonEnd,
+                                                presLevMin, presLevMax)
         # add latList, lonList to lat/lonLists
         latLists.append(latList)
         lonLists.append(lonList)
@@ -1140,7 +1144,8 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
                 if xSectContVariable is not None:
                     xSectCont  = get_xsect(wrfHDL,
                                            xSectContVariable,
-                                           latBeg, lonBeg, latEnd, lonEnd)[0]
+                                           latBeg, lonBeg, latEnd, lonEnd,
+                                           presLevMin, presLevMax)[0]
                     con = ax.contour(xSectCont, levels=xSectContInterval, colors=xSectContColor, linewidths=xSectContLineThickness)
         # add tick labels to y-axis
         yTickIndex = np.where((xSectShad.coords['vertical'].values >= presLevMin) &

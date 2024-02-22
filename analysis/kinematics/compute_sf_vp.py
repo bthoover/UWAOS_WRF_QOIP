@@ -105,7 +105,7 @@ if __name__ == "__main__":
         # compute boundaries of hi-res grid
         forc2D = forc3DHires[k,:,:].squeeze()
         lores2D = sf3DLores[k,:,:].squeeze()
-        bound2D = compute_hires_border(lores2D, forc2D, i_start, j_start, resRatio)
+        bound2D = compute_hires_border(lores2D, forc2D, start_i, start_j, resRatio)
         # if there is a prior level already solved, use it as a first-guess to solve the current level
         # NOTE: this step presumes that the streamfunction does not drastically change from one vertical
         #       level to the next, thus the first-guess from the prior level will speed up convergence
@@ -129,7 +129,7 @@ if __name__ == "__main__":
         # compute boundaries of hi-res grid
         forc2D = forc3DHires[k,:,:].squeeze()
         lores2D = vp3DLores[k,:,:].squeeze()
-        bound2D = compute_hires_border(lores2D, forc2D, i_start, j_start, resRatio)
+        bound2D = compute_hires_border(lores2D, forc2D, start_i, start_j, resRatio)
         # if there is a prior level already solved, use it as a first-guess to solve the current level
         # NOTE: this step presumes that the velocity potential does not drastically change from one vertical
         #       level to the next, thus the first-guess from the prior level will speed up convergence
@@ -232,7 +232,7 @@ if __name__ == "__main__":
                                        "lon"   # nc_out.createVariable input: Variable dimension
                                      )
                                     )
-VP_bounds = nc_out.createVariable( #.................................... Output variable
+    VP_bounds = nc_out.createVariable( #.................................... Output variable
                                   "VP_bounds"  , # nc_out.createVariable input: Variable name
                                   "f8"          , # nc_out.createVariable input: Variable format
                                   (
