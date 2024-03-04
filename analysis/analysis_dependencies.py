@@ -810,6 +810,67 @@ def get_xsect(wrfHDL, var3D, latBeg, lonBeg, latEnd, lonEnd, presLevMin=10000., 
     # return xSect, latList, lonList
     return xSect, latList, lonList
 
+# compute_bearings: given a beginning and ending (lat,lon), compute the beginning bearing and ending bearing
+# see https://www.movable-type.co.uk/scripts/latlong.html
+#
+# INPUTS:
+#   latBeg: beginning latitude (deg)
+#   lonBeg: beginning longitude (deg)
+#   latEnd: ending latitude (deg)
+#   lonEnd: ending longitude (deg)
+#
+# OUTPUTS:
+#   bearingBeg: beginning bearing (deg, clockwise from north)
+#   bearingEnd: ending bearing (deg, clockwise from north)
+#
+# DEPENDENCIES:
+#   numpy
+def compute_bearing(latBeg, lonBeg, latEnd, lonEnd):
+    import numpy as np
+    # define degToRad coefficient
+    degToRad = np.pi/180.
+    # compute beginning bearing
+    term1 = np.sin(lonEnd*degToRad - lonBeg*degToRad) * np.cos(latEnd*degToRad)
+    term2 = np.cos(latBeg*degToRad) * np.sin(latEnd*degToRad) - np.sin(latBeg*degToRad) * np.cos(latEnd*degToRad) * np.cos(lonEnd*degToRad - lonBeg*degToRad)
+    bearingBeg = np.arctan2(term1, term2)
+    # compute ending bearing
+    bearingEnd = (bearingBeg/degToRad - 180.) % 360.
+    return bearingBeg/degToRad, bearingEnd
+
+# extend_xsect_point: given a point lat/lon, a bearing, and distance in km, compute the new point lat/lon
+# see https://www.movable-type.co.uk/scripts/latlong.html
+#
+# INPUTS:
+#   lat1: original latitude (deg)
+#   lon1: original longitude  (deg)
+#   bearing: bearing at [lat1,lon1] (deg, clockwise from north)
+#   kmDist: distance to extend (km)
+#
+# OUTPUTS:
+#    lat2: new latitude (deg)
+#    lon2: new longitude (deg)
+#
+# DEPENDENCIES:
+#   numpy
+def extend_xsect_point(lat1, lon1, bearing, kmDist):
+    import numpy as np
+    # define coefficients
+    degToRad = np.pi/180.  # trandform degrees to radians
+    kmEarth = 6371.0       # Earth's radius (km)
+    # define components of inputs
+    sinLat = np.sin(lat1*degToRad)
+    cosLat = np.cos(lat1*degToRad)
+    sinLon = np.sin(lon1*degToRad)
+    cosLon = np.cos(lon1*degToRad)
+    sinBrg = np.sin(bearing*degToRad)
+    cosBrg = np.cos(bearing*degToRad)
+    sinDel = np.sin(kmDist/kmEarth)
+    cosDel = np.cos(kmDist/kmEarth)
+    # compute lat2
+    lat2 = np.arcsin(sinLat*cosDel + cosLat*sinDel*cosBrg)
+    # compute lon2
+    lon2 = lon1*degToRad + np.arctan2(sinBrg*sinDel*cosLat, cosDel-(sinLat*np.sin(lat2)))
+    return lat2, lon2
 
 # plan_section_plot: Generates a horizontal plan-section plot of shading, contours, and vectors as desired
 #                    Figure is a single panel
