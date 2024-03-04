@@ -870,7 +870,7 @@ def extend_xsect_point(lat1, lon1, bearing, kmDist):
     lat2 = np.arcsin(sinLat*cosDel + cosLat*sinDel*cosBrg)
     # compute lon2
     lon2 = lon1*degToRad + np.arctan2(sinBrg*sinDel*cosLat, cosDel-(sinLat*np.sin(lat2)))
-    return lat2, lon2
+    return lat2/degToRad, lon2/degToRad
 
 # plan_section_plot: Generates a horizontal plan-section plot of shading, contours, and vectors as desired
 #                    Figure is a single panel
