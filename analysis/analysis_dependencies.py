@@ -1,3 +1,31 @@
+# haversine: compute haversine-distance between two (lat,lon) points, or between an array of
+#            (lat,lon) points and a single (lat,lon) point
+#
+# INPUTS:
+#   latBeg: beginning latitude(s)
+#   lonBeg: beginning longitude(s)
+#   latEnd: ending latitude(s)
+#   lonEnd: ending longitude(s)
+# NOTE: either beginning OR ending (lat,lon) can be arrays, but not both (either beginning
+#       or ending must be a single point)
+#
+# OUTPUTS:
+#   distance between points (km)
+#
+# DEPENDENCIES:
+#   numpy
+def haversine(latBeg, lonBeg, latEnd, lonEnd):
+    import numpy as np
+    R = 6372.8  # Approximate radius of earth in km
+    latBeg = latBeg*np.pi/180.0
+    lonBeg = np.deg2rad(lonBeg)
+    latEnd = np.deg2rad(latEnd)
+    lonEnd = np.deg2rad(lonEnd)
+    # compute distance on unit sphere
+    d = np.sin((latEnd - latBeg)/2.)**2. + np.cos(latBeg)*np.cos(latEnd) * np.sin((lonEnd - lonBeg)/2.)**2.
+    # return distance in km on Earth approximate-sphere
+    return 2 * R * np.arcsin(np.sqrt(d))
+
 # dim_coord_swap: assign dimension names and coordinate values from one xarray.Dataset() variable
 #                 to another xarray.Dataset() variable
 #
@@ -1816,8 +1844,6 @@ def interpolate_sigma_levels(field3D, pres3D, sfcPresDonor, topPresDonor, sigmaL
     return interp3D
 
 
-### TEST FUNCTIONS, NOT NECESSARILY COMPLETED ###
-
 # compute_hires_border: create a 2D field the same dimension as the hi-res grid that is
 #                       zero in the interior and along the border the values are set to
 #                       values estimated from linearly-interpolating the lo-res grid
@@ -2044,3 +2070,92 @@ def compute_inverse_laplacian_with_boundaries(wrfHDL, frc, boundaries=None):
     # END
     #
 
+### TEST FUNCTIONS, NOT NECESSARILY COMPLETED ###
+
+# compute_AMEFC: compute Angular Momentum Eddy Flux Convergence (AMEFC) as per Qian et al. (2016)
+#
+# Qian, Y.-K., C.-X. Liang, Z. Yuan, S. Pen, J. Wu, and S. Wang, 2016: Upper-tropospheric
+# environment-tropical cyclone interactions over the Western North Pacific: A statistical
+# study. Advances in Atmospheric Sciences, 33, 614-631, doi: 10.1007/s00376-015-5148-x
+#
+# INPUTS:
+#   wrfHDL: wrf netCDF4.Dataset() file-handle for forecast time
+#   idxStorm: grid-point index of storm center (latitude.flatten() format)
+#   uStorm: zonal motion of storm
+#   vStorm: meridional motion of storm
+#   dRadius: radial distance used for center-difference approximation in radial direction (km)
+#
+# OUTPUTS:
+#
+# DEPENDENCIES:
+#
+# numpy
+# netCDF4.Dataset()
+# scipy.interpolate.LinearNDInterpolator()
+# analysis_dependencies.get_uvmet()
+# analysis_dependencies.compute_bearing()
+# analysis_dependencies.extend_xsect_point()
+# 
+def compute_AMEFC(wrfHDL, idxStorm, uStorm, vStorm, dRadius):
+    import numpy as np
+    from scipy.interpolate import LinearNDInterpolator
+    from netCDF4 import Dataset
+    # pull latitude, longitude, and Earth-relative (u,v) components
+    lat = np.asarray(wrfHDL.variables['XLAT']).squeeze()
+    lon = np.asarray(wrfHDL.variables['XLONG']).squeeze()
+    u,v = np.asarray(get_uvmet(wrfHDL))
+    # fix longitude to 0-360 degree format
+    fix = np.where(lon < 0.)
+    lon[fix] = lon[fix] + 360.
+    # compute latCen and lonCen: (lat,lon) of storm-center
+    latCen = lat.flatten()[idxStorm]
+    lonCen = lon.flatten()[idxStorm]
+    # compute azimuth and reverse-azimuth angle at each grid-point (clockwise from northward)
+    azim, rev_azim = compute_bearing(lat.flatten(), lon.flatten(), latCen, lonCen)
+    # compute radius at each grid-point
+    radi = haversine(lat.flatten(), lon.flatten(), latCen, lonCen)
+    # reshape (u,v) from [lev,lat,lon] to [lev,lat*lon] dimension
+    u = u.reshape((u.shape[0],u.shape[1]*u.shape[2]))
+    v = v.reshape((v.shape[0],v.shape[1]*v.shape[2]))
+    # subtract storm-motion from winds
+    u = u - uStorm
+    v = v - vStorm
+    # compute wind speed
+    spd = np.sqrt(u**2. + v**2.)
+    # compute wind angle (counter-clockwise from eastward)
+    ang = np.arctan2(v,u)*180./np.pi
+    # compute radial and tangential wind components
+    r = spd*np.sin((ang + azim)*np.pi/180.)
+    t = spd*np.cos((ang + azim)*np.pi/180.)
+    # compute azimuthal average by computing along each radius in dAzim slices
+    dAzim = 1.  # degrees
+    azmRange = np.arange(0., 360.1, dAzim)
+    latCircle = np.nan * np.ones((np.size(radi),np.size(azmRange)))
+    lonCircle = np.nan * np.ones((np.size(radi),np.size(azmRange)))
+    for i in range(len(azmRange)):
+        latCircle[:,i], lonCircle[:,i] = extend_xsect_point(lat.flatten()[idxStorm], lon.flatten()[idxStorm], azmRange[i], radi)
+    rInterp = LinearNDInterpolator(list(zip(lat.flatten(), lon.flatten())), r.T)  # interpolator
+    tInterp = LinearNDInterpolator(list(zip(lat.flatten(), lon.flatten())), t.T)  # interpolator
+    rCirc = rInterp(latCircle,lonCircle).T  # circle of r at each grid-point at radius from storm-center
+    tCirc = tInterp(latCircle,lonCircle).T  # circlt of t at each grid-point at radius from storm-center
+    rAzmAvg = np.mean(rCirc, axis=1)  # azimuthally averaged r at each grid-point
+    tAzmAvg = np.mean(tCirc, axis=1)  # azimuthally averaged t at each grid-point
+    # compute anomalous r and t relative to azimuthal average
+    rAnom = r - rAzmAvg
+    tAnom = t - tAzmAvg
+    # compute product of rAnom and tAnom, and take azimuthal average
+    rtAnom = np.multiply(rAnom, tAnom)
+    rtAInterp = LinearNDInterpolator(list(zip(lat.flatten(), lon.flatten())), rtAnom.T)  # interpolator
+    rtACirc = rtAInterp(latCircle,lonCircle).T  # circle of rtAnom at each grid-point at radius from storm-center
+    rtAnomAzmAvg = np.mean(rtACirc, axis=1)  # azimuthally averaged rtAnom at each grid-point
+    # compute the location of a point dRadius km in radial direction from each grid-point
+    latUp, lonUp = extend_xsect_point(lat.flatten(),lon.flatten(),azim,dRadius)
+    latDn, lonDn = extend_xsect_point(lat.flatten(),lon.flatten(),rev_azim,dRadius)
+    # interpolate rtAnomAzmAvg at (latUp,lonUp) and (latDn,lonDn): values at +dR and -dR relative to each point
+    rtAnomAzmAvgUp = rtAInterp(latUp,lonUp).T
+    rtAnomAzmAvgDn = rtAInterp(latDn,lonDn).T
+    # compute AMEFC = -1/(radi**2) * d/dr (r**2 * rtAnomAzmAvg)
+    AMEFC = -radi**(-2.) * ((((radi+dRadius)**2. * rtAnomAzmAvgUp)-((radi-dRadius)**2. * rtAnomAzmAvgDn)) / (2. * dRadius))
+    # return both AMEFC and radi: AMEFC may need to be masked by radius to remove points very near storm-center
+    return AMEFC, radi
+    
