@@ -1,3 +1,31 @@
+# haversine: compute haversine-distance between two (lat,lon) points, or between an array of
+#            (lat,lon) points and a single (lat,lon) point
+#
+# INPUTS:
+#   latBeg: beginning latitude(s)
+#   lonBeg: beginning longitude(s)
+#   latEnd: ending latitude(s)
+#   lonEnd: ending longitude(s)
+# NOTE: either beginning OR ending (lat,lon) can be arrays, but not both (either beginning
+#       or ending must be a single point)
+#
+# OUTPUTS:
+#   distance between points (km)
+#
+# DEPENDENCIES:
+#   numpy
+def haversine(latBeg, lonBeg, latEnd, lonEnd):
+    import numpy as np
+    R = 6372.8  # Approximate radius of earth in km
+    latBeg = latBeg*np.pi/180.0
+    lonBeg = np.deg2rad(lonBeg)
+    latEnd = np.deg2rad(latEnd)
+    lonEnd = np.deg2rad(lonEnd)
+    # compute distance on unit sphere
+    d = np.sin((latEnd - latBeg)/2.)**2. + np.cos(latBeg)*np.cos(latEnd) * np.sin((lonEnd - lonBeg)/2.)**2.
+    # return distance in km on Earth approximate-sphere
+    return 2 * R * np.arcsin(np.sqrt(d))
+
 # dim_coord_swap: assign dimension names and coordinate values from one xarray.Dataset() variable
 #                 to another xarray.Dataset() variable
 #
@@ -502,6 +530,68 @@ def get_wrf_kinematic(wrfHDL, kinName):
         print(kinName + ' not in kinematics list: vor, div, str, shr')
         return None
 
+# get_wrf_grad: given the netCDF4.Dataset() file handle of a WRF file and a scalar variable (V), return 
+#               the gradients dV/dx, dV,dy. Returns an xarray.DataArray() object with appropriate
+#               dimension-names and coordinate varibles borrowed from pressure.
+#
+# INPUTS:
+#
+# wrfHDL: netCDF4.Dataset() file handle of WRF file
+# var: 3D scalar variable to compute gradient from
+#
+# OUTPUTS:
+#
+# dVdx: gradient in x-direction
+# dVdy: gradient in y-direction
+#
+# DEPENDENCIES:
+#
+# numpy
+# xarray
+# wrf-python
+# analysis_dependencies.dim_coord_swap()
+# analysis_dependencies.get_uvmet()
+def get_wrf_grad(wrfHDL, var):
+    import numpy as np
+    import xarray as xr
+    import wrf
+    
+    # define map-factors on mass-points
+    mf = wrfHDL.variables['MAPFAC_M']
+    # define dx, dy as [nlat,nlon] grids normalized by mf
+    dx = wrfHDL.DX*np.power(mf, -1.)
+    dy = wrfHDL.DY*np.power(mf, -1.)
+    # assert numpy-array versions of dx, dy, var
+    dxg = np.asarray(dx).squeeze()
+    dyg = np.asarray(dy).squeeze()
+    varg = np.asarray(var).squeeze()
+    # generate NaN-type dVdx, dVdy arrays
+    dVdx = np.nan * np.ones(np.shape(varg))
+    dVdy = np.nan * np.ones(np.shape(varg))
+    # loop through levels [nz,ny,nx], calculate dVdx, dVdy
+    if np.size(np.shape(varg)) == 3:
+        nz, ny, nx = np.shape(varg)
+        for k in range(nz):
+            for j in range(1,ny-1,1):
+                for i in range(1,nx-1,1):
+                    dVdx[k,j,i] = (varg[k,j,i+1]-varg[k,j,i-1])/(2.*dxg[j,i])
+                    dVdy[k,j,i] = (varg[k,j+1,i]-varg[k,j-1,i])/(2.*dyg[j,i])
+    elif np.size(np.shape(varg)) == 2:
+        ny, nx = np.shape(varg)
+        for j in range(1,ny-1,1):
+            for i in range(1,nx-1,1):
+                dVdx[j,i] = (varg[j,i+1]-varg[j,i-1])/(2.*dxg[j,i])
+                dVdy[j,i] = (varg[j+1,i]-varg[j-1,i])/(2.*dyg[j,i])
+    # assert dVdx, dVdy as xarray.DataArray() object
+    #dVdx = xr.DataArray(dVdx)
+    #dVdy = xr.DataArray(dVdy)
+    # perform dimension/coordinate swap with pressure, which has appropriate dim/coord values
+    #dVdx = dim_coord_swap(dVdx, wrf.getvar(wrfHDL,'p'))
+    #dVdy = dim_coord_swap(dVdy, wrf.getvar(wrfHDL,'p'))
+    # return gradients
+    return dVdx, dVdy
+
+
 # get_wrf_ss: given the netCDF4.Dataset() file handle of a WRF file, compute the static stability
 #             as per: 
 #                 https://www.ncl.ucar.edu/Document/Functions/Contributed/static_stability.shtml
@@ -677,6 +767,9 @@ def gen_cartopy_proj(wrfHDL, cenLat=None, cenLon=None):
 # lonBeg: beginning longitude of cross-section (deg)
 # latEnd: ending latitude of cross-section (deg)
 # lonEnd: ending longitude of cross-section (deg)
+# OPTIONAL INPUTS:
+# presLevMin: minimum pressure level of cross-section (default 10000. Pa)
+# presLevMax: maximum pressure level of cross-section (default 102000. Pa)
 #
 # OUTPUTS:
 #
@@ -691,7 +784,7 @@ def gen_cartopy_proj(wrfHDL, cenLat=None, cenLon=None):
 # xarray (implicit, also a dependency of wrf-python)
 # analysis_dependencies.gen_wrf_proj()
 # analysis_dependencies.dim_coord_swap()
-def get_xsect(wrfHDL, var3D, latBeg, lonBeg, latEnd, lonEnd):
+def get_xsect(wrfHDL, var3D, latBeg, lonBeg, latEnd, lonEnd, presLevMin=10000., presLevMax=102000.):
     import wrf
     import numpy as np
     # draw pressure from wrf.getvar() for comparison of dimensions/coordinates
@@ -717,7 +810,7 @@ def get_xsect(wrfHDL, var3D, latBeg, lonBeg, latEnd, lonEnd):
     if not dimCoordEqual:
         var3D = dim_coord_swap(var3D,p)
     # define inputs to cross-section
-    plevs = np.arange(10000., 102000.1, 5000.)  # levels
+    plevs = np.arange(presLevMin, presLevMax+0.1, 5000.)  # levels
     stag = 'm'  # stagger
     proj = gen_wrf_proj(wrfHDL)  # projection
     ptBeg = wrf.CoordPair(lat=latBeg, lon=lonBeg)  # start_point
@@ -745,6 +838,67 @@ def get_xsect(wrfHDL, var3D, latBeg, lonBeg, latEnd, lonEnd):
     # return xSect, latList, lonList
     return xSect, latList, lonList
 
+# compute_bearings: given a beginning and ending (lat,lon), compute the beginning bearing and ending bearing
+# see https://www.movable-type.co.uk/scripts/latlong.html
+#
+# INPUTS:
+#   latBeg: beginning latitude (deg)
+#   lonBeg: beginning longitude (deg)
+#   latEnd: ending latitude (deg)
+#   lonEnd: ending longitude (deg)
+#
+# OUTPUTS:
+#   bearingBeg: beginning bearing (deg, clockwise from north)
+#   bearingEnd: ending bearing (deg, clockwise from north)
+#
+# DEPENDENCIES:
+#   numpy
+def compute_bearing(latBeg, lonBeg, latEnd, lonEnd):
+    import numpy as np
+    # define degToRad coefficient
+    degToRad = np.pi/180.
+    # compute beginning bearing
+    term1 = np.sin(lonEnd*degToRad - lonBeg*degToRad) * np.cos(latEnd*degToRad)
+    term2 = np.cos(latBeg*degToRad) * np.sin(latEnd*degToRad) - np.sin(latBeg*degToRad) * np.cos(latEnd*degToRad) * np.cos(lonEnd*degToRad - lonBeg*degToRad)
+    bearingBeg = np.arctan2(term1, term2)
+    # compute ending bearing
+    bearingEnd = (bearingBeg/degToRad - 180.) % 360.
+    return bearingBeg/degToRad, bearingEnd
+
+# extend_xsect_point: given a point lat/lon, a bearing, and distance in km, compute the new point lat/lon
+# see https://www.movable-type.co.uk/scripts/latlong.html
+#
+# INPUTS:
+#   lat1: original latitude (deg)
+#   lon1: original longitude  (deg)
+#   bearing: bearing at [lat1,lon1] (deg, clockwise from north)
+#   kmDist: distance to extend (km)
+#
+# OUTPUTS:
+#    lat2: new latitude (deg)
+#    lon2: new longitude (deg)
+#
+# DEPENDENCIES:
+#   numpy
+def extend_xsect_point(lat1, lon1, bearing, kmDist):
+    import numpy as np
+    # define coefficients
+    degToRad = np.pi/180.  # trandform degrees to radians
+    kmEarth = 6371.0       # Earth's radius (km)
+    # define components of inputs
+    sinLat = np.sin(lat1*degToRad)
+    cosLat = np.cos(lat1*degToRad)
+    sinLon = np.sin(lon1*degToRad)
+    cosLon = np.cos(lon1*degToRad)
+    sinBrg = np.sin(bearing*degToRad)
+    cosBrg = np.cos(bearing*degToRad)
+    sinDel = np.sin(kmDist/kmEarth)
+    cosDel = np.cos(kmDist/kmEarth)
+    # compute lat2
+    lat2 = np.arcsin(sinLat*cosDel + cosLat*sinDel*cosBrg)
+    # compute lon2
+    lon2 = lon1*degToRad + np.arctan2(sinBrg*sinDel*cosLat, cosDel-(sinLat*np.sin(lat2)))
+    return lat2/degToRad, lon2/degToRad
 
 # plan_section_plot: Generates a horizontal plan-section plot of shading, contours, and vectors as desired
 #                    Figure is a single panel
@@ -893,7 +1047,7 @@ def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, cont
 
 # cross_section_plot: Generates a series of 2-panel plots of
 #                         left: cross-section from (latBeg,lonBeg) to (latEnd,lonEnd) of xSectShadVariable shading and all contours in xSectContVariableList
-#                         right: sea-level pressure and thickness contours, and the cross-section line
+#                         right: the cross-section line, including any plan-section plot passed through as an input
 #                     Figure is 2 columns by X rows, with a row for each cross-section, up to 3 cross-sections
 #
 # REQUIRED INPUTS:
@@ -908,10 +1062,7 @@ def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, cont
 # xSectContColorList: list of colors for xSectContVariable contours
 # xSectShadVariable: 3D variable for producing cross-section shading (xarray.DataArray() with dimension names and coordinate variables)
 # xSectShadInterval: interval values for xSectCont shading
-# slp: 2D sea-level pressure (probably unperturbed SLP)
-# slpInterval: interval values for slp contours
-# thk: 2D thickness (probably unperturbed thk)
-# thkInterval: interval values for thickness contours
+# planSectPlotTuple: tuple containing: (1) function to produce a pre-defined plan-section plot for the right figure axis and (2) netCDF4 file-handle for input to function; or None to draw only the map and cross-section line
 # datProj: cartopy.crs() projection of data
 # plotProj: cartopy.crs() projection of 2D plots
 #
@@ -922,10 +1073,13 @@ def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, cont
 # xSectContLineThicknessList: list of line thicknesses for xSectContVariable contours
 # presLevMin: minimum pressure level of cross-section (default: 10000. Pa)
 # presLevMax: maximum pressure level of cross-section (default: 100000. Pa)
+# xLineColorList: list of colors for cross-section lines on plan-section plot (default: None)
 #
 # OUTPUTS:
 #
 # fig: figure handle containing all panels
+# latLists: list of lists containing latitudes for all cross-sections
+# lonLists: list of lists contianing longitudes for all cross-sections
 #
 # DEPENDENCIES:
 #
@@ -940,9 +1094,10 @@ def plan_section_plot(wrfHDL, lat, lon, contVariableList, contIntervalList, cont
 # analysis_dependencies.get_xsect()
 def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
                        xSectContVariableList, xSectContIntervalList, xSectContColorList,
-                       xSectShadVariable, xSectShadInterval, slp, slpInterval, thk, thkInterval,
+                       xSectShadVariable, xSectShadInterval, planSectPlotTuple,
                        datProj, plotProj, xSectTitleStr=None, xSectShadCmap='seismic',
-                       xSectContLineThicknessList=None, presLevMin=10000., presLevMax=100000.):
+                       xSectContLineThicknessList=None, presLevMin=10000., presLevMax=100000.,
+                       xLineColorList=None):
     import numpy as np
     import wrf
     import matplotlib.pyplot as plt
@@ -995,6 +1150,9 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
                            [0.5, 0.35, 0.5, 0.3],
                            [0.5, 0.0, 0.5, 0.3]
                           ]
+    # initialize latLists, lonLists (output lists of latList, lonList values)
+    latLists = []
+    lonLists = []
     # loop through cross-sections
     for i in range(numxSect):
         # generate 2-panel plots with (left)  cross-section of initial geopotential height perturbations, and
@@ -1007,15 +1165,36 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
         # define lat/lon lines for SLP/thickness plot
         latLines = np.arange(-90., 90., 5.)
         lonLines = np.arange(-180., 180. ,5.)
-        # define cross-section line-color based on value of i
-        if i == 0:
-            xSectLineColor = 'green'
-        elif i == 1:
-            xSectLineColor = 'orange'
-        elif i == 2:
-            xSectLineColor = 'magenta'
+        # define cross-section line-color based on value of i and xLineColorList
+        if xLineColorList is not None:
+            # assert xLineColorList as list if it is not already a list
+            xLineColorList = xLineColorList if type(xLineColorList)==list else [xLineColorList]
+            # based on value of i, use xLineColorList[i] if it exists, otherwise revert to default color
+            if i == 0:
+                if len(xLineColorList) >=1:
+                    xSectLineColor = xLineColorList[i]
+                else:
+                    xSectLineColor = 'green'
+            elif i == 1:
+                if len(xLineColorList) >=2:
+                    xSectLineColor = xLineColorList[i]
+                else:
+                    xSectLineColor = 'orange'
+            elif i == 2:
+                if len(xLineColorList) >=3:
+                    xSectLineColor = xLineColorList[i]
+                else:
+                    xSectLineColor = 'magenta'
+        else:
+            # based on value of i, use default color
+            if i == 0:
+                xSectLineColor = 'green'
+            elif i == 1:
+                xSectLineColor = 'orange'
+            elif i == 2:
+                xSectLineColor = 'magenta'
         # define figure for all panels (allow longer y-dimension for more cross-sections)
-        fig = plt.figure(figsize=(12,5*numxSect))
+        fig = plt.figure(figsize=(18,5*numxSect))
         # assert contour inputs as list if they are not lists (i.e. if a single value was passed without
         # encapsulating in a list)
         xSectContVariableList = xSectContVariableList if type(xSectContVariableList)==list else [xSectContVariableList]
@@ -1031,7 +1210,11 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
         # shading
         xSectShad, latList, lonList = get_xsect(wrfHDL,
                                                 xSectShadVariable,
-                                                latBeg, lonBeg, latEnd, lonEnd)
+                                                latBeg, lonBeg, latEnd, lonEnd,
+                                                presLevMin, presLevMax)
+        # add latList, lonList to lat/lonLists
+        latLists.append(latList)
+        lonLists.append(lonList)
         # plot cross-section (left panel)
         ax = fig.add_axes(rect=leftPanels[i])
         # plot shading
@@ -1050,7 +1233,8 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
                 if xSectContVariable is not None:
                     xSectCont  = get_xsect(wrfHDL,
                                            xSectContVariable,
-                                           latBeg, lonBeg, latEnd, lonEnd)[0]
+                                           latBeg, lonBeg, latEnd, lonEnd,
+                                           presLevMin, presLevMax)[0]
                     con = ax.contour(xSectCont, levels=xSectContInterval, colors=xSectContColor, linewidths=xSectContLineThickness)
         # add tick labels to y-axis
         yTickIndex = np.where((xSectShad.coords['vertical'].values >= presLevMin) &
@@ -1060,56 +1244,60 @@ def cross_section_plot(wrfHDL, latBegList, lonBegList, latEndList, lonEndList,
         # set y-axis limits and invert axis
         ax.set_ylim((np.min(yTickIndex),np.max(yTickIndex)))
         ax.invert_yaxis()
-        # add title
+        # add title if desired
         if xSectTitleStr is not None:
             ax.set_title(xSectTitleStr + ' (' + xSectLineColor + ')')
-        else:
-            ax.set_title('cross section {:d}'.format(i) + ' (' + xSectLineColor + ')')
         plt.colorbar(ax=ax, mappable=shd)
-        # plot SLP and thickness with SLP perturbation and cross-section line (right panel)
+        # (right panel) plot cross-section line on top of passed-through plan-section map, or
+        # if planSectTuple==None plot cross-section line on map
         ax = fig.add_axes(rect=rightPanels[i], projection=datProj)
-        # define 2D latitude and longitude arrays from wrfHDL
-        lat2D = np.asarray(wrfHDL.variables['XLAT']).squeeze()
-        lon2D = np.asarray(wrfHDL.variables['XLONG']).squeeze()
-        # assert lon2D as 0 to 360 format
-        fix = np.where(lon2D < 0.)
-        lon2D[fix] = lon2D[fix] + 360.
-        # plot slp as black contours
-        con1 = ax.contour(lon2D, lat2D, slp, slpInterval, colors='black', linewidths=1.0,
-                          transform=plotProj)
-        # label every other slp contour
-        ax.clabel(con1, levels=slpInterval[::2])
-        # plot thk as green contours
-        con2 = ax.contour(lon2D, lat2D, thk, thkInterval, colors='green', linewidths=0.75,
-                          transform=plotProj)
-        # add coastline in brown
-        ax.add_feature(cfeature.COASTLINE, edgecolor='brown', linewidth=1.5)
-        ax.set_title('cross section {:d}'.format(i))
-        # add gridlines
-        gl = ax.gridlines(crs=plotProj, draw_labels=True,
-                          linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
-        gl.top_labels = False
-        gl.bottom_labels = False
-        gl.right_labels = False
-        gl.xlines = True
-        gl.xlocator = mticker.FixedLocator(lonLines)
-        gl.ylocator = mticker.FixedLocator(latLines)
-        gl.xformatter = LONGITUDE_FORMATTER
-        gl.yformatter = LATITUDE_FORMATTER
-        gl.xlabel_style = {'alpha' : 0.}
-        gl.ylabel_style = {'size' : 9, 'color' : 'gray'}
+        if planSectPlotTuple is not None:
+            planSectPlotFunc = planSectPlotTuple[0]
+            planSectPlotInput = planSectPlotTuple[1]
+            ax = planSectPlotFunc(ax, planSectPlotInput)
+        else:
+            # define 2D latitude and longitude arrays from wrfHDL
+            lat2D = np.asarray(wrfHDL.variables['XLAT']).squeeze()
+            lon2D = np.asarray(wrfHDL.variables['XLONG']).squeeze()
+            # assert lon2D as 0 to 360 format
+            fix = np.where(lon2D < 0.)
+            lon2D[fix] = lon2D[fix] + 360.
+            # add coastline in brown
+            ax.add_feature(cfeature.COASTLINE, edgecolor='brown', linewidth=1.5)
+            ax.set_title('cross section {:d}'.format(i))
+            # add gridlines
+            gl = ax.gridlines(crs=plotProj, draw_labels=True,
+                              linewidth=0.5, color='gray', alpha=0.5, linestyle='--')
+            gl.top_labels = False
+            gl.bottom_labels = False
+            gl.right_labels = False
+            gl.xlines = True
+            gl.xlocator = mticker.FixedLocator(lonLines)
+            gl.ylocator = mticker.FixedLocator(latLines)
+            gl.xformatter = LONGITUDE_FORMATTER
+            gl.yformatter = LATITUDE_FORMATTER
+            gl.xlabel_style = {'alpha' : 0.}
+            gl.ylabel_style = {'size' : 9, 'color' : 'gray'}
         # plot cross-section line
         ax.plot(lonBeg, latBeg, 'o', transform=plotProj, color=xSectLineColor)
         ax.plot(lonEnd, latEnd, 'o', transform=plotProj, color=xSectLineColor)
-        ax.plot((lonBeg, lonEnd), (latBeg, latEnd), transform=plotProj, color=xSectLineColor)
-    # return figure handle
-    return fig
+        for i in range(len(lonList)-1):
+            ax.plot((lonList[i], lonList[i+1]), (latList[i], latList[i+1]), transform=plotProj, color=xSectLineColor)
+    # return figure handle and lat/lon list for each cross-section
+    return fig, latLists, lonLists
 
 
 # cross_section_diffplot: Generates a series of 2-panel plots of
 #                          left: cross-section from (latBeg,lonBeg) to (latEnd,lonEnd) of xSectShadVariable1-xSectShadVariable2 shading and all contours in xSectContVariableList, with all variables attached to a companion WRF netCDF4.Dataset() file handle for appropriate pressure coordinates
 #                         right: sea-level pressure and thickness contours with sea-level pressure perturbation shaded, and the cross-section line
 #                     Figure is 2 columns by X rows, with a row for each cross-section, up to 3 cross-sections
+#
+#
+#  ### NOTE ###
+#  THIS IS A DEPRECATED FUNCTION, THE UPDATED METHOD FOR A DIFFERENCE-PLOT CROSS-SECTION
+#  IS TO USE INTERPOLATE_TO_SIGMA_LEVELS() TO PUT BOTH FIELDS OF THE DIFFERENCE-PLOT ON
+#  ONE SET OF SIGMA-LEVELS AND THEN USE CROSS_SECTION_PLOT() AS PER NORMAL
+#  ############
 #
 # REQUIRED INPUTS:
 #
@@ -1571,3 +1759,460 @@ def gen_time_avg(dataDir, fileNameBeg, timeStampList, varOrFunc):
         return None
     # return varMean
     return varMean
+
+
+# interpolate_sigma_levels: interpolate a 3D field from its own sigma-coordinate to a donor's
+#                           sigma-coordinate.
+#
+# INPUTS:
+#   field3D: field in native sigma-coordinate to be interpolated to donor's sigma-coordinate (*, [nz,ny,nx]-dimension)
+#   pres3D: pressure values for field3D in native sigma-coordinate (float, [nz,ny,nx]-dimension)
+#   sfcPresDonor: 2D field of surface-pressure values from donor (float, [ny,nx]-dimension)
+#   topPresDonor: donor top pressure (float, single-value)
+#   sigmaLevels: 1D vector of donor's sigma-levels to interpolate to (float, [nz]-dimension)
+#   donorHdl: netcdf4.Dataset() file-handle for donor, to extract dimension/coordinate values
+#
+# OUTPUTS:
+#   interp3D: field3D interpolated to donor's sigma-coordinate (*, [nz,ny,nx]-dimension)
+#
+# DEPENDENCIES:
+#   numpy
+#   xarray
+#   netCDF4.Dataset()
+#   wrf-python: wrf.interplevel(), wrf.getvar()
+#   analysis_dependencies.dim_coord_swap()
+#
+def interpolate_sigma_levels(field3D, pres3D, sfcPresDonor, topPresDonor, sigmaLevels, donorHdl):
+    # Some notes on the technique applied here:
+    #
+    # Sigma levels are a normalized pressure coordinate defined as:
+    #
+    # sig[k,j,i] = (p[k,j,i] - p_top) / (p_sfc[j,i] - p_top)
+    #
+    # where: p[k,j,i] is the pressure at a 3D point in [nz,ny,nx]-dimension
+    #        p_sfc[j,i] is the surface pressure at the corresponding 2D surface point in [ny,nx]-dimension
+    #        p_top is the model-top pressure, which is assumed to be a single fixed value at all [j,i] points
+    #
+    # Comparing two 3D fields on their own respective sigma coordinates does not work if the pressure field is
+    # different between them (e.g., comparing the temperature fields between an unperturbed run and a perturbed
+    # run which generate different pressure fields), because the normalization of the pressure that defines the
+    # sigma surface is computed differently for both fields, i.e. "your sig=0.5 is not the same as my sig=0.5".
+    #
+    # To do this comparison in sigma-space, one of the fields has to be interpolated onto the other field's
+    # sigma surface. This can be done by computing sig[k,j,i] for the interpolated field using it's own
+    # p[k,j,i] values, but then using the donor's p_sfc[j,i] and p_top values to do the normalization. This way,
+    # sig[k,j,i]=0.5 represents the *same* pressure value for both fields, and the two can be compared.
+    #
+    # The technique applied here is to compute the effective donor sigma-values on each level of the field
+    # to be interpolated, then to interpolate from it's own sigma-values to the donor's sigma-values. The
+    # interpolated field could intersect below-surface points (sigma>1) or above-top points (sigma<1), depending
+    # on any underlying differences in the p_sfc or p_top values between the interpolated and donor model
+    # states. These are given np.nan values.
+    #
+    # This can all be accomplished in xarray.DataArray() fields, but the interpolated field will lose its
+    # vertical dimension and coordinate names/values in the process. This metadata can all be retrieved using
+    # analysis_dependencies.dim_coord_swap().
+    import numpy as np
+    import xarray as xr
+    from wrf import interplevel
+    from wrf import getvar
+    from netCDF4 import Dataset
+    # compute sig3D as the interpolated field's pres3D normalized by sfcPresDonor and topPresDonor
+    #   Assuming that pres3D is [nz,ny,nx]-dimension and sfcPresDonor is [ny,nx]-dimension, this operation
+    #   should be broadcastable by numpy rules, with the denominator being left-padded as [1,ny,nx]-dimension
+    #   and then applied across all nz-dimension levels. If this is not the case, you will probably get an
+    #   error of the form "cannot be broadcast".
+    sig3D = np.divide(pres3D - topPresDonor, sfcPresDonor - topPresDonor)
+    # interpolate field3D on sig3D surfaces to donor's standard sigma-levels in sigmaLevels, with any
+    # points that are not interperable assigned to np.nan
+    interp3D = interplevel(field3d=field3D,
+                           vert=sig3D,
+                           desiredlev=sigmaLevels,
+                           missing=np.nan,
+                           meta=False)     # meta=True will default to returning an xarray.DataArray() with
+                                           # metadata (dimension and coordinate names/values) intact, rather
+                                           # than a numpy array, if possible
+    # if interp3D is an xarray.DataArray() object, the metadata is retained with the exception of the vertical
+    # coordinate, in which case perform dim_coord_swap() on donor's pressure field to retain metadata
+    presDonor = getvar(donorHdl, 'p')
+    if type(interp3D) == xr.core.dataarray.DataArray:
+        interp3D = dim_coord_swap(interp3D, presDonor)
+    else:
+        interp3D = xr.DataArray(interp3D)
+        interp3D = dim_coord_swap(interp3D, presDonor)
+    # return interp3D
+    return interp3D
+
+
+# compute_hires_border: create a 2D field the same dimension as the hi-res grid that is
+#                       zero in the interior and along the border the values are set to
+#                       values estimated from linearly-interpolating the lo-res grid
+#                       values at the borders.
+#
+# INPUTS:
+#   fieldLores: 2D [lon,lat] field on lo-res grid
+#   gridHires: 2D [lon,lat] grid of ANY VARIABLE on hi-res grid (we just need the grid dimensions here)
+#   i_start: i-point on lo-res grid that defines the southwest corner of hi-res grid
+#   j_start: j-point on lo-res grid that defines the southwest corder of hi-res grid
+#   resRatio: ratio of grid-resolutions == [hi-res]:[lo-res]
+#
+# OUTPUTS:
+#   borderHires: 2D [lon,lat] field on hi-res grid, zero on interior and borders informed
+#                from lo-res grid
+#
+# DEPENDENCIES:
+#   numpy
+def compute_hires_border(fieldLores, gridHires, i_start, j_start, resRatio):
+    import numpy as np
+    # define hi-res grid dimensions
+    j_siz, i_siz = np.shape(gridHires)
+    # generate a hi-res grid of zero-values
+    borderHires = np.zeros((j_siz, i_siz))
+    # SOUTHERN BORDER
+    # define lo-res components of southern border
+    lr1 = fieldLores[j_start-1,i_start-1:int(i_start-1+i_siz/resRatio)]
+    lr2 = fieldLores[j_start-2,i_start-1:int(i_start-1+i_siz/resRatio)]
+    # blend lr1 and lr2 to define southern border in lo-res
+    borderLores = 0.667*lr1 + 0.333*lr2
+    # interpolate borderLores to hi-res grid using linear interpolation and resRatio
+    xLores = np.arange(np.size(lr1))
+    xHires = np.arange(resRatio * np.size(lr1)) / resRatio
+    y = np.interp(xHires, xLores, borderLores)
+    # commit y to borderHires along southern border
+    borderHires[0,:] = y
+    # NORTHERN BORDER
+    # define lo-res components of northern border
+    lr1 = fieldLores[int(j_start-2+j_siz/resRatio),i_start-1:int(i_start-1+i_siz/resRatio)]
+    lr2 = fieldLores[int(j_start-1+j_siz/resRatio),i_start-1:int(i_start-1+i_siz/resRatio)]
+    # blend lr1 and lr2 to define northern border in lo-res
+    borderLores = 0.667*lr1 + 0.333*lr2
+    # interpolate borderLores to hi-res grid using linear interpolation and resRatio
+    xLores = np.arange(np.size(lr1))
+    xHires = np.arange(resRatio * np.size(lr1)) / resRatio
+    y = np.interp(xHires, xLores, borderLores)
+    # commit y to borderHires along northern border
+    borderHires[j_siz-1,:] = y
+    # WESTERN BORDER
+    # define lo-res components of western border
+    lr1 = fieldLores[j_start-1:int(j_start-1+j_siz/resRatio),i_start-1]
+    lr2 = fieldLores[j_start-2:int(j_start-2+j_siz/resRatio),i_start-2]
+    # blend lr1 and lr2 to define western border in lo-res
+    borderLores = 0.667*lr1 + 0.333*lr2
+    # interpolate borderLores to hi-res grid using linear interpolation and resRatio
+    xLores = np.arange(np.size(lr1))
+    xHires = np.arange(resRatio * np.size(lr1)) / resRatio
+    y = np.interp(xHires, xLores, borderLores)
+    # commit y to borderHires along western border
+    borderHires[:,0] = y
+    # EASTERN BORDER
+    # define lo-res components of eastern border
+    lr1 = fieldLores[j_start-1:int(j_start-1+j_siz/resRatio),int(i_start-1+i_siz/resRatio)]
+    lr2 = fieldLores[j_start-2:int(j_start-2+j_siz/resRatio),int(i_start-2+i_siz/resRatio)]
+    # blend lr1 and lr2 to define eastern border in lo-res
+    borderLores = 0.667*lr2 + 0.333*lr1
+    # interpolate borderLores to hi-res grid using linear interpolation and resRatio
+    xLores = np.arange(np.size(lr1))
+    xHires = np.arange(resRatio * np.size(lr1)) / resRatio
+    y = np.interp(xHires, xLores, borderLores)
+    # commit y to borderHires along eastern border
+    borderHires[:,i_siz-1] = y
+    # return borderHires
+    return borderHires
+
+# compute_inverse_laplacian_with_boundaries: As per compute_inverse_laplacian(), but includes
+#                                            the option to include prescribed non-zero boundary
+#                                            values (still treated as dirichlet BCs, but with
+#                                            spatially varying BCs instead of zeros).
+# INPUTS:
+#   wrfHDL: netCDF4.Dataset() file-handle for WRF file
+#   frc: forcing field (e.g. vorticity for computing streamfunction)
+#   boundaries: None for zero BCs, otherwise grid of np.shape(frc) with prescribed values on
+#               boundary
+#
+# OUTPUTS:
+#   full_psi: field of np.shape(frc) with laplacian field
+#
+# DEPENDENCIES:
+#   numpy
+#   time
+#   wrf
+#   scipy
+#
+def compute_inverse_laplacian_with_boundaries(wrfHDL, frc, boundaries=None):
+    #########################################################################################
+    #
+    # Import necessary modules
+    #
+    import numpy as np #..................................................................... array module
+    from numpy import reshape #.............................................................. numPy array reshape routine
+    import time #............................................................................ clock module
+    from wrf import to_np #.................................................................. xarray-to-numPy-array conversion routine
+    import scipy as sp #..................................................................... scientific function module
+    import scipy.optimize #.................................................................. sciPy function optimization routine
+    import scipy.linalg #.................................................................... sciPy linear algebra routine
+    import scipy.sparse #.................................................................... sciPy sparse array routine
+    #
+    #########################################################################################
+    #
+    # Initialize forcing (-kin) field, and interior and boundary conditions of solved (psi)
+    # field. psi will become full_psi once it has converged.
+    #
+    # Start clock
+    start = time.time() #.................................................................... beginning time
+    #
+    # FIELDS DEFINED
+    #
+    # Define 2D grid-dimensions
+    ny,nx = np.shape(frc) #.................................................................. 2D grid-dimensions, from forcing grid
+    # Define grid map-factors
+    msfm = np.asarray(wrfHDL.variables['MAPFAC_M']).squeeze() #.............................. grid map factors on mass points
+    # Define grid-spacing in x- and y-directions
+    ds_x = wrfHDL.DX #....................................................................... grid dx
+    ds_y = wrfHDL.DY #....................................................................... grid dy
+    # Define inverted field: psi
+    if boundaries is not None:
+        psi = np.copy(boundaries)
+        psib = np.copy(boundaries)
+    else:
+        psi = np.zeros((ny, nx)) #............................................................... initialized psi (Dirichlet boundary conditions)
+        psib = np.copy(psi) #............................................................................. prescribed psi boundary value (Dirichlet boundary conditions)
+    # Define full_psi, the psi array that is operated on in relaxation
+    full_psi=np.zeros((ny,nx)) #............................................................. initialized full_psi
+    # Define dimensions of interior-points to grid
+    nxm2 = nx - 2 #.......................................................................... x-direction inner points number
+    nym2 = ny - 2 #.......................................................................... y-direction inner points number
+    # Define forcing field and forcing field as a flattened vector
+    forcegrid=np.ndarray(shape=(nym2,nxm2)) #................................................ forcing grid (interior points only, initialized empty)
+    forcevec=np.ndarray(forcegrid.size) #.................................................... forcing vector of forcegrid
+    #
+    # FIELDS INITIALIZED
+    #
+    # Initialize forcegrid, forcevec, and psi
+    psi=full_psi[:,:] #...................................................................... psi (initialized to full_psi initial values)
+    forcegrid = frc[1:ny-1,1:nx-1]/msfm[1:ny-1,1:nx-1]**2.0 #................................ forcegrid (initialized to frc, divided by square of map-factors)
+    forcevec[:]=to_np(forcegrid).flatten() #................................................. forcevec (initialized to forcegrid as flattened array)
+    # Initialize boundary conditions of forcevec
+    for i in range(nym2):
+        for j in range(nxm2):
+            index=i*nxm2+j #................................................................. TEMPORARY VARIABLE: index of current [i,j] point in forcevec
+            # Adjust values in forcevec based on prescribed boundary conditions
+            # NOTE: psib is larger than forcevec by 2 in both i- and j-direction, so
+            #       i==0 or j==0 corresponds to lower border for both grids, but upper border
+            #       for psib is at i+2 and j+2 relative to forcevec.
+            if(i==0) : forcevec[index] = forcevec[index] - psib[i,j]/ds_x**2.
+            if(i==nym2-1): forcevec[index] = forcevec[index] - psib[i+2,j]/ds_x**2.
+            if(j==0): forcevec[index] = forcevec[index] - psib[i,j]/ds_y**2
+            if(j==nxm2-1): forcevec[index] = forcevec[index] - psib[i,j+2]/ds_y**2.
+    #
+    #########################################################################################
+    #
+    # Compute inverse-laplacian of forcevec to recover psi
+    #
+    # Define laplacian operators
+    lap = np.zeros((nxm2*nym2,nxm2*nym2),dtype=np.float64) #................................. laplacian operators field
+    # Initialize laplacian operator values
+    for i in range(nym2):
+        for j in range(nxm2):
+            index=i*nxm2 + j #............................................................... TEMPORARY VARIABLE: index of current [i,j] point in forcevec
+            # Construct indices of 5-point molecule around index
+            A1 = (i-1)*nxm2 + j #............................................................ TEMPORARY VARIABLE: south point
+            A2 = i*nxm2 + (j-1) #............................................................ TEMPORARY VARIABLE: west point
+            A3 = index #..................................................................... TEMPORARY VARIABLE: center [i,j] point
+            A4 = i*nxm2 + (j+1) #............................................................ TEMPORARY VARIABLE: east point
+            A5 = (i+1)*nxm2 + j #............................................................ TEMPORARY VARIABLE: north point
+            # Compute laplacian for points in molecule
+            if((i>0)):lap[index,A1] = 1./ds_y**2;
+            if(j<nxm2-1): lap[index,A4] = 1./ds_y**2;
+            if(j>0) :lap[index,A2] = 1./ds_x**2;
+            if(i<nym2-1):lap[index,A5] = 1./ds_x**2;
+            if((i>=0) and (i<=nym2) and (j>=0) and (j<=nxm2)): lap[index,index]=-2./ds_x**2.-2./ds_y**2.
+    # Apply block-sparse-row function to lap
+    lap = scipy.sparse.bsr_matrix(lap)
+    # Compute transpose (adjoint) of laplacian operator
+    laps = lap.T #........................................................................... transpose of lap
+    # Define initial guess of psi
+    if boundaries is not None:
+        psi0 = boundaries[1:ny-1,1:nx-1]
+    else:
+        psi0 = np.ones((nym2, nxm2), dtype=np.float64) #......................................... initial guess of psi (all ones)
+    # Define laplacian and transpose of laplacian operators
+    LAP = lap
+    LAPS = laps
+    #
+    # Define functions to solve
+    #
+    # L-BFGS method
+    #
+    # Define a function to compute error term
+    def fun(psi0):
+        error = LAP.dot(psi0) - forcevec
+        return 0.5*(error**2).sum()
+    # Define a function to compute gradient term
+    def grad(psi0):
+        return LAPS.dot(LAP.dot(psi0) - forcevec)
+    # Optimize to solve
+    field, value, info = scipy.optimize.fmin_l_bfgs_b(fun, psi0.flatten(), grad, pgtol=1e-17, factr=.0001,
+                                                  maxiter=150000,maxfun=15000*50)
+    # Stop clock
+    end = time.time() #...................................................................... Ending time
+    #
+    #########################################################################################
+    #
+    # Report timing statistics for solving on level-k
+    print('time for solve = ', end - start, ' seconds.' )
+    print(info)
+    # Define full_psi as reshaped matrix of converged psi
+    full_psi[:,:] = psi.copy()
+    full_psi[1:-1,1:-1] = reshape(field, (nym2, nxm2)).copy()
+    # Return full_psi
+    return full_psi[:,:]
+    #
+    # END
+    #
+
+### TEST FUNCTIONS, NOT NECESSARILY COMPLETED ###
+
+# compute_AMEFC: compute Angular Momentum Eddy Flux Convergence (AMEFC) as per Qian et al. (2016)
+#
+# Qian, Y.-K., C.-X. Liang, Z. Yuan, S. Pen, J. Wu, and S. Wang, 2016: Upper-tropospheric
+# environment-tropical cyclone interactions over the Western North Pacific: A statistical
+# study. Advances in Atmospheric Sciences, 33, 614-631, doi: 10.1007/s00376-015-5148-x
+#
+# INPUTS:
+#   wrfHDL: wrf netCDF4.Dataset() file-handle for forecast time
+#   idxStorm: grid-point index of storm center (latitude.flatten() format)
+#   uStorm: zonal motion of storm
+#   vStorm: meridional motion of storm
+#   dRadius: radial distance used for center-difference approximation in radial direction (km)
+#
+# OUTPUTS:
+#   AMEFC: angular momentum eddy flux convergence at each grid-point in [lev,lat*lon]-dimension
+#   radi: radius at each grid-point in [lev,lat*lon]-dimension
+#
+# DEPENDENCIES:
+#   numpy
+#   netCDF4.Dataset()
+#   scipy.interpolate.LinearNDInterpolator()
+#   analysis_dependencies.get_uvmet()
+#   analysis_dependencies.compute_bearing()
+#   analysis_dependencies.extend_xsect_point()
+# 
+def compute_AMEFC(wrfHDL, idxStorm, uStorm, vStorm, dRadius):
+    import numpy as np
+    from scipy.interpolate import LinearNDInterpolator
+    from netCDF4 import Dataset
+    # pull latitude, longitude, and Earth-relative (u,v) components
+    lat = np.asarray(wrfHDL.variables['XLAT']).squeeze()
+    lon = np.asarray(wrfHDL.variables['XLONG']).squeeze()
+    u,v = np.asarray(get_uvmet(wrfHDL))
+    # fix longitude to 0-360 degree format
+    fix = np.where(lon < 0.)
+    lon[fix] = lon[fix] + 360.
+    # compute latCen and lonCen: (lat,lon) of storm-center
+    latCen = lat.flatten()[idxStorm]
+    lonCen = lon.flatten()[idxStorm]
+    # compute azimuth and reverse-azimuth angle at each grid-point (clockwise from northward)
+    azim, rev_azim = compute_bearing(lat.flatten(), lon.flatten(), latCen, lonCen)
+    # compute radius at each grid-point
+    radi = haversine(lat.flatten(), lon.flatten(), latCen, lonCen)
+    # reshape (u,v) from [lev,lat,lon] to [lev,lat*lon] dimension
+    u = u.reshape((u.shape[0],u.shape[1]*u.shape[2]))
+    v = v.reshape((v.shape[0],v.shape[1]*v.shape[2]))
+    # subtract storm-motion from winds
+    u = u - uStorm
+    v = v - vStorm
+    # compute wind speed
+    spd = np.sqrt(u**2. + v**2.)
+    # compute wind angle (counter-clockwise from eastward)
+    ang = np.arctan2(v,u)*180./np.pi
+    # compute radial and tangential wind components
+    r = spd*np.sin((ang + azim)*np.pi/180.)
+    t = spd*np.cos((ang + azim)*np.pi/180.)
+    # compute azimuthal average by computing along each radius in dAzim slices
+    dAzim = 1.  # degrees
+    azmRange = np.arange(0., 360., dAzim)
+    latCircle = np.nan * np.ones((np.size(radi),np.size(azmRange)))
+    lonCircle = np.nan * np.ones((np.size(radi),np.size(azmRange)))
+    for i in range(len(azmRange)):
+        latCircle[:,i], lonCircle[:,i] = extend_xsect_point(lat.flatten()[idxStorm], lon.flatten()[idxStorm], azmRange[i], radi)
+    rInterp = LinearNDInterpolator(list(zip(lat.flatten(), lon.flatten())), r.T)  # interpolator
+    tInterp = LinearNDInterpolator(list(zip(lat.flatten(), lon.flatten())), t.T)  # interpolator
+    rCirc = rInterp(latCircle,lonCircle).T  # circle of r at each grid-point at radius from storm-center
+    tCirc = tInterp(latCircle,lonCircle).T  # circlt of t at each grid-point at radius from storm-center
+    rAzmAvg = np.mean(rCirc, axis=1)  # azimuthally averaged r at each grid-point
+    tAzmAvg = np.mean(tCirc, axis=1)  # azimuthally averaged t at each grid-point
+    # compute anomalous r and t relative to azimuthal average
+    rAnom = r - rAzmAvg
+    tAnom = t - tAzmAvg
+    # compute product of rAnom and tAnom, and take azimuthal average
+    rtAnom = np.multiply(rAnom, tAnom)
+    rtAInterp = LinearNDInterpolator(list(zip(lat.flatten(), lon.flatten())), rtAnom.T)  # interpolator
+    rtACirc = rtAInterp(latCircle,lonCircle).T  # circle of rtAnom at each grid-point at radius from storm-center
+    rtAnomAzmAvg = np.mean(rtACirc, axis=1)  # azimuthally averaged rtAnom at each grid-point
+    # compute the location of a point dRadius km in radial direction from each grid-point
+    latUp, lonUp = extend_xsect_point(lat.flatten(),lon.flatten(),azim,dRadius)
+    latDn, lonDn = extend_xsect_point(lat.flatten(),lon.flatten(),rev_azim,dRadius)
+    # interpolate rtAnomAzmAvg at (latUp,lonUp) and (latDn,lonDn): values at +dR and -dR relative to each point
+    rtAAzmAvgInterp = LinearNDInterpolator(list(zip(lat.flatten(), lon.flatten())), rtAnomAzmAvg.T)  # interpolator
+    rtAnomAzmAvgUp = rtAAzmAvgInterp(latUp,lonUp).T
+    rtAnomAzmAvgDn = rtAAzmAvgInterp(latDn,lonDn).T
+    # compute AMEFC = -1/(radi**2) * d/dr (r**2 * rtAnomAzmAvg)
+    AMEFC = -radi**(-2.) * ((((radi+dRadius)**2. * rtAnomAzmAvgUp)-((radi-dRadius)**2. * rtAnomAzmAvgDn)) / (2. * dRadius))
+    # return both AMEFC and radi: AMEFC may need to be masked by radius to remove points very near storm-center
+    return AMEFC, radi
+   
+
+# compute_AZAVOR: compute azimuthally-averaged absolute vorticity (AZAVOR) as per Qian et al. (2016)
+#
+# Qian, Y.-K., C.-X. Liang, Z. Yuan, S. Pen, J. Wu, and S. Wang, 2016: Upper-tropospheric
+# environment-tropical cyclone interactions over the Western North Pacific: A statistical
+# study. Advances in Atmospheric Sciences, 33, 614-631, doi: 10.1007/s00376-015-5148-x
+#
+# INPUTS:
+#   wrfHDL: wrf netCDF4.Dataset() file-handle for forecast time
+#   idxStorm: grid-point index of storm center (latitude.flatten() format)
+#
+# OUTPUTS:
+#   avorAzmAvg: azimuthally-averaged absolute vorticity at each grid-point in [lev,lat*lon]-dimension (scaled by 1.0E+05)
+#   radi: radius at each grid-point in [lev,lat*lon]-dimension (km)
+#
+# DEPENDENCIES:
+#   numpy
+#   netCDF4.Dataset()
+#   scipy.interpolate.LinearNDInterpolator()
+#   wrf-python
+#   analysis_dependencies.get_uvmet()
+#   analysis_dependencies.compute_bearing()
+#   analysis_dependencies.extend_xsect_point()
+#
+def compute_AZAVOR(wrfHDL, idxStorm):
+    import numpy as np
+    from scipy.interpolate import LinearNDInterpolator
+    from netCDF4 import Dataset
+    import wrf
+    # pull latitude, longitude, and absolute vorticity
+    lat = np.asarray(wrfHDL.variables['XLAT']).squeeze()
+    lon = np.asarray(wrfHDL.variables['XLONG']).squeeze()
+    avor = np.asarray(wrf.getvar(wrfHDL,'avo')).squeeze()
+    # fix longitude to 0-360 degree format
+    fix = np.where(lon < 0.)
+    lon[fix] = lon[fix] + 360.
+    # compute latCen and lonCen: (lat,lon) of storm-center
+    latCen = lat.flatten()[idxStorm]
+    lonCen = lon.flatten()[idxStorm]
+    # compute radius at each grid-point
+    radi = haversine(lat.flatten(), lon.flatten(), latCen, lonCen)
+    # reshape avor from [lev,lat,lon] to [lev,lat*lon] dimension
+    avor = avor.reshape((avor.shape[0],avor.shape[1]*avor.shape[2]))
+    # compute azimuthal average by computing along each radius in dAzim slices
+    dAzim = 1.  # degrees
+    azmRange = np.arange(0., 360., dAzim)
+    latCircle = np.nan * np.ones((np.size(radi),np.size(azmRange)))
+    lonCircle = np.nan * np.ones((np.size(radi),np.size(azmRange)))
+    for i in range(len(azmRange)):
+        latCircle[:,i], lonCircle[:,i] = extend_xsect_point(lat.flatten()[idxStorm], lon.flatten()[idxStorm], azmRange[i], radi)
+    avorInterp = LinearNDInterpolator(list(zip(lat.flatten(), lon.flatten())), avor.T)  # interpolator
+    avorCirc = avorInterp(latCircle,lonCircle).T  # circle of avor at each grid-point at radius from storm-center
+    avorAzmAvg = np.mean(avorCirc, axis=1)  # azimuthally averaged avor at each grid-point
+    # return both avorAzmAvg and radi: avorAzmAvg may need to be masked by radius to remove points very near storm-center
+    return avorAzmAvg, radi
