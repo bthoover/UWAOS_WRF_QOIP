@@ -2088,7 +2088,7 @@ def compute_inverse_laplacian_with_boundaries(wrfHDL, frc, boundaries=None):
 # OUTPUTS:
 #   AMEFCRange: angular momentum eddy flux convergence in 2D [lev,radius]-dimension
 #   preAzmAvgRange: azimuthally-averaged pressure in 2D [lev,radius]-dimension
-#   radRange: radius along [radius]-dimension
+#   radRange: radius in [radius]-dimension
 #
 # DEPENDENCIES:
 #   numpy
@@ -2169,7 +2169,10 @@ def compute_AMEFC(wrfHDL, idxStorm, uStorm, vStorm, dRadius):
     rtAnomAzmAvgUp = rtAAzmAvgInterp(latUp,lonUp).T
     rtAnomAzmAvgDn = rtAAzmAvgInterp(latDn,lonDn).T
     # compute AMEFC = -1/(radi**2) * d/dr (r**2 * rtAnomAzmAvg)
-    AMEFC = -radi**(-2.) * ((((radi+dRadius)**2. * rtAnomAzmAvgUp)-((radi-dRadius)**2. * rtAnomAzmAvgDn)) / (2. * dRadius))
+    AMEFC = ((radi+dRadius)**2.) * (rtAnomAzmAvgUp)  # r**2 * rtAnomAzmAvg at outer-radius
+    AMEFC = AMEFC - ((radi-dRadius)**2.) * (rtAnomAzmAvgDn)  # difference in r**2 * rtAnomAzmAvg between outer/inner radius
+    AMEFC = AMEFC / (2. * dRadius)  # d/dr (r**2 * rtAnomAzmAvg)
+    AMEFC = np.multiply(-radi**(-2.), AMEFC)
     # compute 2D fldAzmAvg and preAzmAvg values: vertical (sigma) levels by radius
     dRad = np.sqrt(2.) * 3.  # km
     radRange = np.arange(0.,1000.1,dRad)
@@ -2194,8 +2197,8 @@ def compute_AMEFC(wrfHDL, idxStorm, uStorm, vStorm, dRadius):
 #
 # OUTPUTS:
 #   fldAzmAvgRange: azimuthally-averaged field in 2D [lev,radius]-dimension
-#   preAzmAvgRange: azimuthaly-averaged pressure in 2D [lev,radius]-dimension
-#   radRange: radius along [radius]-dimension
+#   preAzmAvgRange: azimuthally-averaged pressure in 2D [lev,radius]-dimension
+#   radRange: radius in [radius]-dimension
 #
 # DEPENDENCIES:
 #   numpy
