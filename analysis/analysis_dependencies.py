@@ -2134,7 +2134,7 @@ def compute_AMEFC(wrfHDL, idxStorm, uStorm, vStorm, dRadius):
     # compute wind angle (counter-clockwise from eastward)
     ang = np.arctan2(v,u)*180./np.pi
     # compute radial and tangential wind components
-    r = spd*np.sin((ang + azim)*np.pi/180.)
+    r = -spd*np.sin((ang + azim)*np.pi/180.)
     t = spd*np.cos((ang + azim)*np.pi/180.)
     # compute azimuthal average by computing along each radius in dAzim slices
     dAzim = 1.  # degrees
@@ -2186,7 +2186,206 @@ def compute_AMEFC(wrfHDL, idxStorm, uStorm, vStorm, dRadius):
     preAzmAvgRange = xInterp(latRange,lonRange).T # preAzmAvg along line extending north from (latCen,lonCen)
     # return AMEFCRange, preAzmAvgRange, and radRange
     return AMEFCRange, preAzmAvgRange, radRange
-   
+
+
+# compute_local_AMEFC: compute a local approximation of Angular Momentum Eddy Flux Convergence (AMEFC)
+#                      based on the REAL AMEFC as per Qian et al. (2016)
+#
+# Qian, Y.-K., C.-X. Liang, Z. Yuan, S. Pen, J. Wu, and S. Wang, 2016: Upper-tropospheric
+# environment-tropical cyclone interactions over the Western North Pacific: A statistical
+# study. Advances in Atmospheric Sciences, 33, 614-631, doi: 10.1007/s00376-015-5148-x
+#
+#                      the "local" approximation drops the azimuthal-average of the (r')(t') term
+#                      so the value can be computed at every grid-point. NOTE: This is a test I am
+#                      doing based on my own interpretation of the equation, not based on literature.
+#
+# INPUTS:
+#   wrfHDL: wrf netCDF4.Dataset() file-handle for forecast time
+#   idxStorm: grid-point index of storm center (latitude.flatten() format)
+#   uStorm: zonal motion of storm
+#   vStorm: meridional motion of storm
+#   dRadius: radial distance used for center-difference approximation in radial direction (km)
+#
+# OUTPUTS:
+#   localAMEFC: local angular momentum eddy flux convergence in 3D [lev,lat,lon]-dimension at each grid-point
+#   radi: radius in [lat,lon]-dimension at each grid-point (for masking local AMEFC)
+#
+# DEPENDENCIES:
+#   numpy
+#   netCDF4.Dataset()
+#   scipy.interpolate.LinearNDInterpolator()
+#   wrf-python
+#   xarray
+#   analysis_dependencies.get_uvmet()
+#   analysis_dependencies.compute_bearing()
+#   analysis_dependencies.extend_xsect_point()
+#   analysis_dependencies.dim_coord_swap()
+def compute_local_AMEFC(wrfHDL, idxStorm, uStorm, vStorm, dRadius):
+    import numpy as np
+    from scipy.interpolate import LinearNDInterpolator
+    from netCDF4 import Dataset
+    import wrf
+    import xarray as xr
+    # pull latitude, longitude, and Earth-relative (u,v) components
+    lat = np.asarray(wrfHDL.variables['XLAT']).squeeze()
+    lon = np.asarray(wrfHDL.variables['XLONG']).squeeze()
+    u,v = np.asarray(get_uvmet(wrfHDL))
+    # pull pressure
+    pre = np.asarray(wrf.getvar(wrfHDL,'p')).squeeze()
+    # fix longitude to 0-360 degree format
+    fix = np.where(lon < 0.)
+    lon[fix] = lon[fix] + 360.
+    # compute latCen and lonCen: (lat,lon) of storm-center
+    latCen = lat.flatten()[idxStorm]
+    lonCen = lon.flatten()[idxStorm]
+    # compute azimuth and reverse-azimuth angle at each grid-point (clockwise from northward)
+    azim, rev_azim = compute_bearing(lat.flatten(), lon.flatten(), latCen, lonCen)
+    # compute radius at each grid-point
+    radi = haversine(lat.flatten(), lon.flatten(), latCen, lonCen)
+    # reshape (u,v) and pre from [lev,lat,lon] to [lev,lat*lon] dimension
+    u = u.reshape((u.shape[0],u.shape[1]*u.shape[2]))
+    v = v.reshape((v.shape[0],v.shape[1]*v.shape[2]))
+    pre = pre.reshape((pre.shape[0],pre.shape[1]*pre.shape[2]))
+    # subtract storm-motion from winds
+    u = u - uStorm
+    v = v - vStorm
+    # compute wind speed
+    spd = np.sqrt(u**2. + v**2.)
+    # compute wind angle (counter-clockwise from eastward)
+    ang = np.arctan2(v,u)*180./np.pi
+    # compute radial and tangential wind components
+    r = -spd*np.sin((ang + azim)*np.pi/180.)
+    t = spd*np.cos((ang + azim)*np.pi/180.)
+    # compute azimuthal average by computing along each radius in dAzim slices
+    dAzim = 1.  # degrees
+    azmRange = np.arange(0., 360., dAzim)
+    latCircle = np.nan * np.ones((np.size(radi),np.size(azmRange)))
+    lonCircle = np.nan * np.ones((np.size(radi),np.size(azmRange)))
+    for i in range(len(azmRange)):
+        latCircle[:,i], lonCircle[:,i] = extend_xsect_point(lat.flatten()[idxStorm], lon.flatten()[idxStorm], azmRange[i], radi)
+    rInterp = LinearNDInterpolator(list(zip(lat.flatten(), lon.flatten())), r.T)  # interpolator
+    tInterp = LinearNDInterpolator(list(zip(lat.flatten(), lon.flatten())), t.T)  # interpolator
+    rCirc = rInterp(latCircle,lonCircle).T  # circle of r at each grid-point at radius from storm-center
+    tCirc = tInterp(latCircle,lonCircle).T  # circlt of t at each grid-point at radius from storm-center
+    rAzmAvg = np.mean(rCirc, axis=1)  # azimuthally averaged r at each grid-point
+    tAzmAvg = np.mean(tCirc, axis=1)  # azimuthally averaged t at each grid-point
+    # compute anomalous r and t relative to azimuthal average
+    rAnom = r - rAzmAvg
+    tAnom = t - tAzmAvg
+    # compute product of rAnom and tAnom
+    rtAnom = np.multiply(rAnom, tAnom)
+    # compute the location of a point dRadius km in radial direction from each grid-point
+    latUp, lonUp = extend_xsect_point(lat.flatten(),lon.flatten(),azim,dRadius)
+    latDn, lonDn = extend_xsect_point(lat.flatten(),lon.flatten(),rev_azim,dRadius)
+    # interpolate rtAnom at (latUp,lonUp) and (latDn,lonDn): values at +dR and -dR relative to each point
+    rtAnomInterp = LinearNDInterpolator(list(zip(lat.flatten(), lon.flatten())), rtAnom.T)  # interpolator
+    rtAnomUp = rtAnomInterp(latUp,lonUp).T
+    rtAnomDn = rtAnomInterp(latDn,lonDn).T
+    # compute (approx. local) AMEFC = -1/(radi**2) * d/dr (r**2 * rtAnom)
+    localAMEFC = ((radi+dRadius)**2.) * (rtAnomUp)  # r**2 * rtAnom at outer-radius
+    localAMEFC = localAMEFC - ((radi-dRadius)**2.) * (rtAnomDn)  # difference in r**2 * rtAnom between outer/inner radius
+    localAMEFC = localAMEFC / (2. * dRadius)  # d/dr (r**2 * rtAnom)
+    localAMEFC = np.multiply(-radi**(-2.), localAMEFC)
+    # return localAMEFC and radi
+    return localAMEFC.reshape((localAMEFC.shape[0],lat.shape[0],lat.shape[1])), radi.reshape((lat.shape[0],lat.shape[1]))
+
+
+# compute_inertial_stability: compute inertial stability as per Qian et al. (2016)
+#
+# Qian, Y.-K., C.-X. Liang, Z. Yuan, S. Pen, J. Wu, and S. Wang, 2016: Upper-tropospheric
+# environment-tropical cyclone interactions over the Western North Pacific: A statistical
+# study. Advances in Atmospheric Sciences, 33, 614-631, doi: 10.1007/s00376-015-5148-x
+#
+# INPUTS:
+#   wrfHDL: wrf netCDF4.Dataset() file-handle for forecast time
+#   idxStorm: grid-point index of storm center (latitude.flatten() format)
+#
+# OUTPUTS:
+#   inerStabRange: inertial stability in 2D [lev,radius]-dimension
+#   preAzmAvgRange: azimuthally-averaged pressure in 2D [lev,radius]-dimension
+#   radRange: radius in [radius]-dimension
+#
+# DEPENDENCIES:
+#   numpy
+#   netCDF4.Dataset()
+#   scipy.interpolate.LinearNDInterpolator()
+#   wrf-python
+#   xarray
+#   analysis_dependencies.get_uvmet()
+#   analysis_dependencies.compute_bearing()
+#   analysis_dependencies.extend_xsect_point()
+#   analysis_dependencies.dim_coord_swap()
+def compute_inertial_stability(wrfHDL, idxStorm):
+    import numpy as np
+    from scipy.interpolate import LinearNDInterpolator
+    from netCDF4 import Dataset
+    import wrf
+    import xarray as xr
+    # pull latitude, longitude, and Earth-relative (u,v) components
+    lat = np.asarray(wrfHDL.variables['XLAT']).squeeze()
+    lon = np.asarray(wrfHDL.variables['XLONG']).squeeze()
+    u,v = np.asarray(get_uvmet(wrfHDL))
+    # pull pressure, absolute vorticity, and coriolis parameter
+    pre = np.asarray(wrf.getvar(wrfHDL,'p')).squeeze()
+    avor = np.asarray(wrf.getvar(wrfHDL,'avo')).squeeze()
+    cor = np.asarray(wrfHDL.variables['F']).squeeze()
+    # fix longitude to 0-360 degree format
+    fix = np.where(lon < 0.)
+    lon[fix] = lon[fix] + 360.
+    # compute latCen and lonCen: (lat,lon) of storm-center
+    latCen = lat.flatten()[idxStorm]
+    lonCen = lon.flatten()[idxStorm]
+    # compute azimuth and reverse-azimuth angle at each grid-point (clockwise from northward)
+    azim, rev_azim = compute_bearing(lat.flatten(), lon.flatten(), latCen, lonCen)
+    # compute radius at each grid-point
+    radi = haversine(lat.flatten(), lon.flatten(), latCen, lonCen)
+    # reshape fields from [lev,lat,lon] to [lev,lat*lon] dimension
+    u = u.reshape((u.shape[0],u.shape[1]*u.shape[2]))
+    v = v.reshape((v.shape[0],v.shape[1]*v.shape[2]))
+    pre = pre.reshape((pre.shape[0],pre.shape[1]*pre.shape[2]))
+    avor = avor.reshape((avor.shape[0],avor.shape[1]*avor.shape[2]))
+    # compute wind speed
+    spd = np.sqrt(u**2. + v**2.)
+    # compute wind angle (counter-clockwise from eastward)
+    ang = np.arctan2(v,u)*180./np.pi
+    # compute radial and tangential wind components
+    r = -spd*np.sin((ang + azim)*np.pi/180.)
+    t = spd*np.cos((ang + azim)*np.pi/180.)
+    # compute azimuthal average by computing along each radius in dAzim slices
+    dAzim = 1.  # degrees
+    azmRange = np.arange(0., 360., dAzim)
+    latCircle = np.nan * np.ones((np.size(radi),np.size(azmRange)))
+    lonCircle = np.nan * np.ones((np.size(radi),np.size(azmRange)))
+    for i in range(len(azmRange)):
+        latCircle[:,i], lonCircle[:,i] = extend_xsect_point(lat.flatten()[idxStorm], lon.flatten()[idxStorm], azmRange[i], radi)
+    xInterp = LinearNDInterpolator(list(zip(lat.flatten(), lon.flatten())), t.T)  # interpolator
+    xCirc = xInterp(latCircle,lonCircle).T  # circlt of t at each grid-point at radius from storm-center
+    tAzmAvg = np.mean(xCirc, axis=1)  # azimuthally averaged t at each grid-point
+    xInterp = LinearNDInterpolator(list(zip(lat.flatten(), lon.flatten())), avor.T)  # interpolator
+    xCirc = xInterp(latCircle,lonCircle).T  # circlt of avor at each grid-point at radius from storm-center
+    avorAzmAvg = np.mean(xCirc, axis=1)  # azimuthally averaged avor at each grid-point
+    # compute inertial stability = avorAzmAvg * (cor + 2*tAzmAvg/r)
+    inerStab = np.nan * np.ones(np.shape(tAzmAvg))
+    for i in range(np.shape(tAzmAvg)[0]):
+        inerStab[i,:] = avorAzmAvg[i,:] * (cor.flatten() + np.divide(2. * tAzmAvg[i,:], radi))
+    # also compute azimuthal-averaged pressure
+    preInterp = LinearNDInterpolator(list(zip(lat.flatten(), lon.flatten())), pre.T)  # interpolator
+    preCirc = preInterp(latCircle,lonCircle).T  # circle of pre at each grid-point at radius from storm-center
+    preAzmAvg = np.mean(preCirc, axis=1)  # azimuthally averaged pre at each grid-point
+    # compute 2D fldAzmAvg and preAzmAvg values: vertical (sigma) levels by radius
+    dRad = np.sqrt(2.) * 3.  # km
+    radRange = np.arange(0.,1000.1,dRad)
+    latRange = np.nan * np.ones((np.size(radRange),))
+    lonRange = np.nan * np.ones((np.size(radRange),))
+    for i in range(len(latRange)):
+        latRange[i], lonRange[i] = extend_xsect_point(latCen, lonCen, 0., radRange[i])
+    xInterp = LinearNDInterpolator(list(zip(lat.flatten(), lon.flatten())), inerStab.T)  # inerStab interpolator
+    inerStabRange = xInterp(latRange,lonRange).T # inerStab along line extending north from (latCen,lonCen)
+    xInterp = LinearNDInterpolator(list(zip(lat.flatten(), lon.flatten())), preAzmAvg.T)  # preAzmAvg interpolator
+    preAzmAvgRange = xInterp(latRange,lonRange).T # preAzmAvg along line extending north from (latCen,lonCen)
+    # return AMEFCRange, preAzmAvgRange, and radRange
+    return inerStabRange, preAzmAvgRange, radRange
+
 
 # compute_AzmAvg: compute azimuthally-averaged field and return 2D vertical/radius values
 #
