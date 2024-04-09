@@ -2119,7 +2119,7 @@ def compute_AMEFC(wrfHDL, idxStorm, uStorm, vStorm, dRadius):
     latCen = lat.flatten()[idxStorm]
     lonCen = lon.flatten()[idxStorm]
     # compute azimuth and reverse-azimuth angle at each grid-point (clockwise from northward)
-    azim, rev_azim = compute_bearing(lat.flatten(), lon.flatten(), latCen, lonCen)
+    azim, rev_azim = compute_bearing(latCen, lonCen, lat.flatten(), lon.flatten())
     # compute radius at each grid-point
     radi = haversine(lat.flatten(), lon.flatten(), latCen, lonCen)
     # reshape (u,v) and pre from [lev,lat,lon] to [lev,lat*lon] dimension
@@ -2134,8 +2134,8 @@ def compute_AMEFC(wrfHDL, idxStorm, uStorm, vStorm, dRadius):
     # compute wind angle (counter-clockwise from eastward)
     ang = np.arctan2(v,u)*180./np.pi
     # compute radial and tangential wind components
-    r = -spd*np.sin((ang + azim)*np.pi/180.)
-    t = spd*np.cos((ang + azim)*np.pi/180.)
+    r = spd*np.sin((ang + azim)*np.pi/180.)
+    t = -spd*np.cos((ang + azim)*np.pi/180.)  # tangential wind is positive in counter-clockwise direction
     # compute azimuthal average by computing along each radius in dAzim slices
     dAzim = 1.  # degrees
     azmRange = np.arange(0., 360., dAzim)
@@ -2239,7 +2239,7 @@ def compute_local_AMEFC(wrfHDL, idxStorm, uStorm, vStorm, dRadius):
     latCen = lat.flatten()[idxStorm]
     lonCen = lon.flatten()[idxStorm]
     # compute azimuth and reverse-azimuth angle at each grid-point (clockwise from northward)
-    azim, rev_azim = compute_bearing(lat.flatten(), lon.flatten(), latCen, lonCen)
+    azim, rev_azim = compute_bearing(latCen, lonCen, lat.flatten(), lon.flatten())
     # compute radius at each grid-point
     radi = haversine(lat.flatten(), lon.flatten(), latCen, lonCen)
     # reshape (u,v) and pre from [lev,lat,lon] to [lev,lat*lon] dimension
@@ -2254,8 +2254,8 @@ def compute_local_AMEFC(wrfHDL, idxStorm, uStorm, vStorm, dRadius):
     # compute wind angle (counter-clockwise from eastward)
     ang = np.arctan2(v,u)*180./np.pi
     # compute radial and tangential wind components
-    r = -spd*np.sin((ang + azim)*np.pi/180.)
-    t = spd*np.cos((ang + azim)*np.pi/180.)
+    r = spd*np.sin((ang + azim)*np.pi/180.)
+    t = -spd*np.cos((ang + azim)*np.pi/180.)  # tangential wind is positive in counter-clockwise direction
     # compute azimuthal average by computing along each radius in dAzim slices
     dAzim = 1.  # degrees
     azmRange = np.arange(0., 360., dAzim)
@@ -2288,7 +2288,6 @@ def compute_local_AMEFC(wrfHDL, idxStorm, uStorm, vStorm, dRadius):
     localAMEFC = np.multiply(-radi**(-2.), localAMEFC)
     # return localAMEFC and radi
     return localAMEFC.reshape((localAMEFC.shape[0],lat.shape[0],lat.shape[1])), radi.reshape((lat.shape[0],lat.shape[1]))
-
 
 # compute_inertial_stability: compute inertial stability as per Qian et al. (2016)
 #
@@ -2336,7 +2335,7 @@ def compute_inertial_stability(wrfHDL, idxStorm):
     latCen = lat.flatten()[idxStorm]
     lonCen = lon.flatten()[idxStorm]
     # compute azimuth and reverse-azimuth angle at each grid-point (clockwise from northward)
-    azim, rev_azim = compute_bearing(lat.flatten(), lon.flatten(), latCen, lonCen)
+    azim, rev_azim = compute_bearing(latCen, lonCen, lat.flatten(), lon.flatten())
     # compute radius at each grid-point
     radi = haversine(lat.flatten(), lon.flatten(), latCen, lonCen)
     # reshape fields from [lev,lat,lon] to [lev,lat*lon] dimension
@@ -2349,8 +2348,8 @@ def compute_inertial_stability(wrfHDL, idxStorm):
     # compute wind angle (counter-clockwise from eastward)
     ang = np.arctan2(v,u)*180./np.pi
     # compute radial and tangential wind components
-    r = -spd*np.sin((ang + azim)*np.pi/180.)
-    t = spd*np.cos((ang + azim)*np.pi/180.)
+    r = spd*np.sin((ang + azim)*np.pi/180.)
+    t = -spd*np.cos((ang + azim)*np.pi/180.)  # tangential wind is positive in counter-clockwise direction
     # compute azimuthal average by computing along each radius in dAzim slices
     dAzim = 1.  # degrees
     azmRange = np.arange(0., 360., dAzim)
