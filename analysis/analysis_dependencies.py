@@ -2070,6 +2070,141 @@ def compute_inverse_laplacian_with_boundaries(wrfHDL, frc, boundaries=None):
     # END
     #
 
+# compute_PI_vars: compute potential intensity variables via tcpyPI formulation of Kerry Emanuel's MATLAB
+#                  code for solving system of:
+#
+#                  Bister, M., and K. A. Emanuel, 2002: Low frequency variability of tropical cyclone
+#                  potential intensity I: Interannual to interdecadal variability. Journal of
+#                  Geophysical Research, 107, doi: 10.1029/2001JD000776
+#
+# NOTE: This requires use of UWAOS_WRF_QOIP-2 conda environment, which has tcpyPI installed via pip
+#       This requires importing tcpyPI.utilities *, which can only be done at the module level, not
+#       allowed within
+# INPUTS:
+#   wrfHDL: wrf netCDF4.Dataset() file-hanlde for forecast time
+#
+# OUTPUTS:
+#   VMAX: 2D [lat,lon]-dimension xarray.DataArray() of maximum potential intensity as max sustained wind (m/s)
+#   PMIN: 2D [lat,lon]-dimension xarray.DataArray() of maximum potential intensity as minimum sea-level pressure (hPa)
+#   IFL: 2D [lat,lon]-dimension xarray.DataArray() of indicator flags for PI variables (1 == good)
+#   TO: 2D [lat,lon]-dimension xarray.DataArray() of estimated outflow temperature (K)
+#   OTL: 2D [lat,lon]-dimension xarray.DataArray() of estimated outflow pressure (hPa)
+#
+# DEPENDENCIES:
+#   numpy
+#   xarray
+#   tcpyPI (req. UWAOS_WRF_QOIP-2 conda environment)
+#   dim_coord_swap()
+#   get_wrf_slp()
+#   wrf-python
+def compute_PI_vars(wrfHDL):
+    import numpy as np
+    import xarray as xr
+    from tcpyPI import pi as tcpi
+    import wrf
+    # stage inputs to tcpi
+    # variables need to be cast to xarray.DataArray() variables with appropriate dimension coordinate-names
+    SSTC = xr.DataArray(wrfHDL.variables['SST']).squeeze() - 273.15  # sea surface temperature (C)
+    MSL = get_wrf_slp(wrfHDL)                                        # mean sea level pressure (hPa)
+    SSTC = dim_coord_swap(SSTC, MSL)
+    P = 0.01 * wrf.getvar(wrfHDL, 'p')                               # pressure (hPa)
+    T = get_wrf_tk(wrfHDL) - 273.15                                  # temperature (C)
+    R = 1000.0 * xr.DataArray(wrfHDL.variables['QVAPOR']).squeeze()  # mixing ratio (g/kg)
+    R = dim_coord_swap(R, P)
+    # other optional settings
+    CKCD = 0.9                                                       # unitless ratio of exchange coefficients of enthalpy and momentum flux (default 0.9)
+    ascent_flag = 0                                                  # 0 = reversible ascent (default), 1 = pseudo-adiabatic ascent
+    diss_flag = 1                                                    # 0 = no dissipative heating, 1 = dissipative heating (default)
+    V_reduc = 0.8                                                    # fractional reduction of gradient winds to 10-m winds (default 0.8)
+    ptop = 100.0                                                     # top pressure for calculation (hPa)
+    miss_handle = 1                                                  # 0 = missing CAPE values ignored, 1 = missing CAPE values set to nan
+    # apply tcpi function across 'bottom_top' dimension
+    dim = 'bottom_top'
+    result = xr.apply_ufunc(tcpi, SSTC, MSL, P, T, R,
+                            kwargs=dict(CKCD=CKCD, ascent_flag=ascent_flag, diss_flag=diss_flag, ptop=ptop, miss_handle=miss_handle),
+                            input_core_dims=[[], [], [dim, ], [dim, ], [dim, ],],
+                            output_core_dims=[[], [], [], [], []],
+                            vectorize=True
+                           )
+    # result is a list containing: [VMAX, PMIN, IFL, TO, OTL]
+    # return
+    return result[0], result[1], result[2], result[3], result[4]
+
+
+# compute_vinterp_weights: given a 3D [lev,lat,lon] array of variable profiles and a 2D [lat,lon] array of
+#                          variable values, return a 3D [lev,lat,lon] array of weights to vertically interpolate
+#                          a 3D array to the chosen 2D surface
+#
+# NOTE: This is usually achieved with wrf.vertinterp() or similar, but sometimes these routines fail and I need
+#       to brute-force the weights using this routine instead.
+#
+# INPUTS:
+#   vProf: 3D [lev,lat,lon]-dimension array of variable values
+#   vVal: 2D [lat,lon]-dimension array of values to interpolate to
+#   isLog: boolean for if interpolation is done in log-space (defaults to True, for pressure-based interpolation)
+#
+# OUTPUTS:
+#   vWeight: 3D [lev,lat,lon]-dimension array of interpolation weights
+#
+# DEPENDENCIES:
+#   numpy
+def compute_vinterp_weights(vProf, vVal, isLog=True):
+    # initialize vWeight as all-zeroes
+    import numpy as np
+    vWeight = 0. * np.ones(np.shape(vProf))
+    # compute vDiff
+    vDiff = vProf - vVal
+    # find minimum vDiff at each point
+    kBest = np.argmin(np.abs(vDiff),axis=0)
+    # find vDiff at kBest: this will define how we set interpolation weights (is best level above/below vVal)
+    vDkB = np.nan * np.ones(np.shape(kBest))
+    for i in range(np.size(kBest)):
+        vDkB[i] = vDiff[kBest[i],i]
+    # keep track of total indices tracked below
+    allIdx = np.asarray([])
+    # if vDkB == 0 (best level is equal to vVal), set weight at kBest to 1.
+    idx = np.where(vDkB == 0.)[0]
+    if np.size(idx) > 0:
+        for i in idx:
+            vWeight[kBest[i],i] = 1.0
+    allIdx = np.append(allIdx,idx)
+    # if vDKB > 0. (best level is beneath vVal), set kTop and kBot and define log10-linear weights
+    idx = np.where(vDkB > 0.)[0]
+    if np.size(idx) > 0:
+        for i in idx:
+            kBot = kBest[i]
+            kTop = kBest[i] + 1
+            # isLog: log-based interpolation
+            if isLog:
+                vWeightTop = (np.log10(vProf[kBot,i]) - np.log10(vVal[i])) / (np.log10(vProf[kBot,i]) - np.log10(vProf[kTop,i]))
+            else:
+                vWeightTop = (vProf[kBot,i] - vVal[i]) / (vProf[kBot,i] - vProf[kTop,i])
+            vWeightBot = 1. - vWeightTop
+            vWeight[kBot,i] = vWeightBot
+            vWeight[kTop,i] = vWeightTop
+    allIdx = np.append(allIdx,idx)
+    # if vDkB < 0. (best level is above vVal), set kTop and kBot and define log10-linear weights
+    idx = np.where(vDkB < 0.)[0]
+    if np.size(idx) > 0:
+        for i in idx:
+            kBot = kBest[i] - 1
+            kTop = kBest[i]
+            # isLog: log-based interpolation
+            if isLog:
+                vWeightTop = (np.log10(vProf[kBot,i]) - np.log10(vVal[i])) / (np.log10(vProf[kBot,i]) - np.log10(vProf[kTop,i]))
+            else:
+                vWeightTop = (vProf[kBot,i] - vVal[i]) / (vProf[kBot,i] - vProf[kTop,i])
+            vWeightBot = 1. - vWeightTop
+            vWeight[kBot,i] = vWeightBot
+            vWeight[kTop,i] = vWeightTop
+    allIdx = np.append(allIdx,idx)
+    # sanity check: allIdx should match size of vVal, if all gridpoints in vVal were covered by 3 cases above
+    if (np.size(allIdx) != np.size(vVal)):
+        print('WARNING: {:d} grid-points were not assigned weights'.format(np.size(vVal)-np.size(allIdx)))
+    # return vWeight
+    return vWeight
+
+
 ### TEST FUNCTIONS, NOT NECESSARILY COMPLETED ###
 
 # compute_AMEFC: compute Angular Momentum Eddy Flux Convergence (AMEFC) as per Qian et al. (2016)
