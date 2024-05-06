@@ -531,7 +531,7 @@ def get_wrf_kinematic(wrfHDL, kinName):
         return None
 
 # get_wrf_grad: given the netCDF4.Dataset() file handle of a WRF file and a scalar variable (V), return 
-#               the gradients dV/dx, dV,dy. Returns an xarray.DataArray() object with appropriate
+#               the gradients dV/dx, dV/dy. Returns an xarray.DataArray() object with appropriate
 #               dimension-names and coordinate varibles borrowed from pressure.
 #
 # INPUTS:
@@ -591,6 +591,50 @@ def get_wrf_grad(wrfHDL, var):
     # return gradients
     return dVdx, dVdy
 
+# get_wrf_zgrad: given the netCDF4.Dataset() file handle of a WRF file and a scalar variable (V), return 
+#                the gradient dV/dz. Returns an xarray.DataArray() object with appropriate
+#                dimension-names and coordinate varibles borrowed from pressure. Vertical coordinate is
+#                presumed to be height-coordinate.
+#
+# NOTE: Unlike the horizontal derivatives in get_wrf_grad(), the vertical gradient is going to have
+#       different vertical grid-spacing between levels varying both vertically and horizontally.
+#
+# INPUTS:
+#
+# wrfHDL: netCDF4.Dataset() file handle of WRF file
+# var: 3D scalar variable to compute gradient from
+#
+# OUTPUTS:
+#
+# dVdz: gradient in z-direction
+#
+# DEPENDENCIES:
+#
+# numpy
+# xarray
+# wrf-python
+# analysis_dependencies.dim_coord_swap()
+# analysis_dependencies.get_uvmet()
+def get_wrf_zgrad(wrfHDL, var):
+    import numpy as np
+    import xarray as xr
+    import wrf
+
+    # assert numpy-array type for var and extract z
+    varg = np.asarray(var).squeeze()
+    zg = np.asarray(wrf.getvar(wrfHDL, 'z')).squeeze()  # height in m, includes terrain-height
+    # generate NaN-type dVdz array
+    dVdz = np.nan * np.ones(np.shape(varg))
+    # loop through levels [nz,ny,nx], calculate dVdz
+    nz, ny, nx = np.shape(varg)
+    for k in range(1,nz-1,1):
+        # compute 2D array of difference in zg above/below level k
+        dzg = zg[k+1,:,:].squeeze() - zg[k-1,:,:].squeeze()
+        for j in range(ny):
+            for i in range(nx):
+              dVdz[k,j,i] = (varg[k+1,j,i]-varg[k-1,j,i])/(dzg[j,i])
+    # return dVdz
+    return dVdz
 
 # get_wrf_ss: given the netCDF4.Dataset() file handle of a WRF file, compute the static stability
 #             as per: 
@@ -2203,6 +2247,49 @@ def compute_vinterp_weights(vProf, vVal, isLog=True):
         print('WARNING: {:d} grid-points were not assigned weights'.format(np.size(vVal)-np.size(allIdx)))
     # return vWeight
     return vWeight
+
+
+# compute_diabatic_heating: estimate the diabatic heating as the residual of d/dT(thta) and advection(thta)
+#
+# INPUTS:
+#   wrfHdlBefore: netCDF4.Dataset() file-handle for WRF forecast at 'before' hour
+#   wrfHdlNow: netCDF4.Dataset() file-handle for WRF forecast at 'now' hour
+#   wrfHdlAfter: netCDF4.Dataset() file-handle for WRF forecast at 'after' hour
+#   delHr: difference in time between 'before' and 'after' time, in hours
+#
+# OUTPUTS:
+#   resid: estimated diabatic heating as residual between d/dT(thta) computed between 'before' and
+#          'after' times, and advection(thta) computed at 'now' time
+#
+# DEPENDENCIES:
+#   numpy
+#   wrf-python
+#   analysis_dependencies.get_uvmet()
+#   analysis_dependencies.get_wrf_grad()
+#   analysis_dependencies.get_wrf_zgrad()
+def compute_diabatic_heating(wrfHdlBefore, wrfHdlNow, wrfHdlAfter, delHr):
+    import numpy as np
+    import wrf
+    # extract potential temperature at Before/Now/After times
+    thtaBefore = np.asarray(wrf.getvar(wrfHdlBefore, 'th')).squeeze()
+    thtaNow = np.asarray(wrf.getvar(wrfHdlNow, 'th')).squeeze()
+    thtaAfter = np.asarray(wrf.getvar(wrfHdlAfter, 'th')).squeeze()
+    # extract wind components at Now time
+    uNow, vNow = get_uvmet(wrfHdlNow)  # m/s
+    # extract vertical wind at Now time
+    wNow = np.asarray(wrf.getvar(wrfHdlNow, 'wa')).squeeze()  # m/s
+    # compute horizontal gradients of thtaNow
+    ddx_thtaNow, ddy_thtaNow = get_wrf_grad(wrfHdlNow, thtaNow)  # K/km
+    # compute vertical gradient of thtaNow
+    ddz_thtaNow = get_wrf_zgrad(wrfHdlNow, thtaNow)  # K/m
+    # compute time-tendency of thta at thtaNow via Before/After center difference approximation
+    ddt_thtaNow = (thtaAfter - thtaBefore) / (3600 * delHr)  # K/s
+    # compute advection of thtaNow by (uNow, vNow, wNow) in K/s
+    adv_thtaNow = np.multiply(-uNow*0.001, ddx_thtaNow) + np.multiply(-vNow*0.001, ddy_thtaNow) + np.multiply(-wNow, ddz_thtaNow)
+    # compute residual of ddt_thtaNow and adv_thtaNow
+    resid = ddt_thtaNow - adv_thtaNow
+    # return residual as diabatic heating
+    return resid
 
 
 ### TEST FUNCTIONS, NOT NECESSARILY COMPLETED ###
