@@ -2177,7 +2177,8 @@ def compute_PI_vars(wrfHDL):
 
 # compute_vinterp_weights: given a 3D [lev,lat,lon] array of variable profiles and a 2D [lat,lon] array of
 #                          variable values, return a 3D [lev,lat,lon] array of weights to vertically interpolate
-#                          a 3D array to the chosen 2D surface
+#                          a 3D array to the chosen 2D surface. Interpolation that cannot be performed is set
+#                          to NaN at those points.
 #
 # NOTE: This is usually achieved with wrf.vertinterp() or similar, but sometimes these routines fail and I need
 #       to brute-force the weights using this routine instead.
@@ -2218,14 +2219,19 @@ def compute_vinterp_weights(vProf, vVal, isLog=True):
         for i in idx:
             kBot = kBest[i]
             kTop = kBest[i] + 1
-            # isLog: log-based interpolation
-            if isLog:
-                vWeightTop = (np.log10(vProf[kBot,i]) - np.log10(vVal[i])) / (np.log10(vProf[kBot,i]) - np.log10(vProf[kTop,i]))
+            # bypass exception where kBest is at top-of-model (kTop=np.shape(vProf)[0])
+            if (kTop == np.shape(vProf)[0]):
+                vWeight[kBot,i] = np.nan
+                vWeight[kBot,i] = np.nan
             else:
-                vWeightTop = (vProf[kBot,i] - vVal[i]) / (vProf[kBot,i] - vProf[kTop,i])
-            vWeightBot = 1. - vWeightTop
-            vWeight[kBot,i] = vWeightBot
-            vWeight[kTop,i] = vWeightTop
+                # isLog: log-based interpolation
+                if isLog:
+                    vWeightTop = (np.log10(vProf[kBot,i]) - np.log10(vVal[i])) / (np.log10(vProf[kBot,i]) - np.log10(vProf[kTop,i]))
+                else:
+                    vWeightTop = (vProf[kBot,i] - vVal[i]) / (vProf[kBot,i] - vProf[kTop,i])
+                vWeightBot = 1. - vWeightTop
+                vWeight[kBot,i] = vWeightBot
+                vWeight[kTop,i] = vWeightTop
     allIdx = np.append(allIdx,idx)
     # if vDkB < 0. (best level is above vVal), set kTop and kBot and define log10-linear weights
     idx = np.where(vDkB < 0.)[0]
@@ -2233,21 +2239,25 @@ def compute_vinterp_weights(vProf, vVal, isLog=True):
         for i in idx:
             kBot = kBest[i] - 1
             kTop = kBest[i]
-            # isLog: log-based interpolation
-            if isLog:
-                vWeightTop = (np.log10(vProf[kBot,i]) - np.log10(vVal[i])) / (np.log10(vProf[kBot,i]) - np.log10(vProf[kTop,i]))
+            # bypass exception where kBest is at bottom-of-model (kBest=0)
+            if (kBest[i] == 0):
+                vWeight[kBot,i] = np.nan
+                vWeight[kBot,i] = np.nan
             else:
-                vWeightTop = (vProf[kBot,i] - vVal[i]) / (vProf[kBot,i] - vProf[kTop,i])
-            vWeightBot = 1. - vWeightTop
-            vWeight[kBot,i] = vWeightBot
-            vWeight[kTop,i] = vWeightTop
+                # isLog: log-based interpolation
+                if isLog:
+                    vWeightTop = (np.log10(vProf[kBot,i]) - np.log10(vVal[i])) / (np.log10(vProf[kBot,i]) - np.log10(vProf[kTop,i]))
+                else:
+                    vWeightTop = (vProf[kBot,i] - vVal[i]) / (vProf[kBot,i] - vProf[kTop,i])
+                vWeightBot = 1. - vWeightTop
+                vWeight[kBot,i] = vWeightBot
+                vWeight[kTop,i] = vWeightTop
     allIdx = np.append(allIdx,idx)
     # sanity check: allIdx should match size of vVal, if all gridpoints in vVal were covered by 3 cases above
     if (np.size(allIdx) != np.size(vVal)):
         print('WARNING: {:d} grid-points were not assigned weights'.format(np.size(vVal)-np.size(allIdx)))
     # return vWeight
     return vWeight
-
 
 # compute_diabatic_heating: estimate the diabatic heating as the residual of d/dT(thta) and advection(thta)
 #
