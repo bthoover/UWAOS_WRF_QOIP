@@ -319,7 +319,7 @@ def get_wrf_eth(wrfHdl):
     # define input variables to wrf.eth():
     # P: Pressure
     P = np.asarray(wrf.getvar(wrfHdl,'p')).squeeze()
-    # qVap: Vapor Pressure
+    # qVap: water vapor mixing ratio
     qVap = np.asarray(wrfHdl.variables['QVAPOR']).squeeze()
     # T: Temperature (K)
     T = np.asarray(get_wrf_tk(wrfHdl)).squeeze()
@@ -333,6 +333,55 @@ def get_wrf_eth(wrfHdl):
     eth = dim_coord_swap(eth,dimCoordDonor)
     # Return eth
     return eth
+
+# get_wrf_ethsat: given the netCDF4 Dataset() handle for a WRF file, produces the 
+# saturated equivalent potential temperature (K)
+#
+# INPUTS:
+#
+# wrfHdl: WRF file netCDF4.Dataset() handle
+#
+# OUTPUTS:
+#
+# eth: equivalent potential temperature in (nz,ny,nx) dimension (K)
+#
+# DEPENDENCIES:
+#
+# numpy
+# xarray
+# netCDF4.Dataset()
+# wrf(-python)
+# analysis_dependencies.get_wrf_tk()
+# analysis_dependencies.dim_coord_swap()
+def get_wrf_ethsat(wrfHdl):
+    import numpy as np
+    import xarray as xr
+    from netCDF4 import Dataset
+    import wrf
+    # define input variables to wrf.eth():
+    # P: Pressure
+    P = np.asarray(wrf.getvar(wrfHdl,'p')).squeeze()
+    # qVap: water vapor mixing ratio
+    qVap = np.asarray(wrfHdl.variables['QVAPOR']).squeeze()
+    # T: Temperature (K)
+    T = np.asarray(get_wrf_tk(wrfHdl)).squeeze()
+    # create a version of Temperature in (C)
+    Tc = T.copy() - 273.15
+    # compute saturation vapor pressure, see https://www.weather.gov/media/epz/wxcalc/vaporPressure.pdf
+    expo = 7.5 * Tc / (237.3 + Tc)  # exponent of es calculation
+    es = 100. * 6.11 * np.power(10., expo)  # saturation vapor pressure (Pa, hence the leading 100. multiplier)
+    # compute saturation mixing ratio, see https://vortex.plymouth.edu/~stmiller/stmiller_content/Publications/AtmosRH_Equations_Rev.pdf
+    qVapSat = 0.622 * es / (P - es)
+    # derive ethSat from input (qVapSat,T,P)
+    ethSat = wrf.eth(qVapSat, T, P, meta=False, units='K')  # (K)
+    # assert ethSat as xarray.DataArray() object
+    ethSat = xr.DataArray(ethSat)
+    # Swap dimension names and coordinates from wrf.getvar(wrfHdl,'p'), which has
+    # same dimension and coordinates that eth should have
+    dimCoordDonor = wrf.getvar(wrfHdl,'p')
+    ethSat = dim_coord_swap(ethSat,dimCoordDonor)
+    # Return ethSat
+    return ethSat
 
 
 # get_uvmet: given the netCDF4.Dataset() file handle of a WRF file, extract the (u,v) wind
