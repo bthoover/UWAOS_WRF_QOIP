@@ -1,0 +1,21 @@
+name: UWAOS_WRF_QOIP-2
+channels:
+  - conda-forge
+dependencies:
+  - python
+  - numpy
+  - pandas
+  - xarray
+  - cfgrib
+  - netCDF4
+  - shapely
+  - matplotlib
+  - cartopy
+  - jupyter
+  - ncl
+  - wrf-python
+  - metpy
+  - pip
+  - pip:
+    - tcpypi
+
