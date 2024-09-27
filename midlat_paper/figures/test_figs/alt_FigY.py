@@ -219,7 +219,7 @@ def generate_figure_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, figure
                                  xSectShadInterval=xSectShadInterval,
                                  datProj=datProj,
                                  plotProj=plotProj,
-                                 planSectPlotTuple=(right_panel, (33.0, 171.0, 69.0, 255.0, unpHdl, ptdHdl, 40000., 70000.)),
+                                 planSectPlotTuple=(right_panel, (36.0, 176.0, 66.0, 245.0, unpHdl, ptdHdl, 40000., 70000.)),
                                  presLevMin=10000.,
                                  xSectTitleStr=None,
                                  xLineColorList=['black']

@@ -37,11 +37,15 @@ from scipy.interpolate import interp1d
 # define function for plan-section plot: mean temperature between 2 pressure-levels,
 #                                        and perturbation temperature and PV
 def right_panel(ax, payloadTuple):
-    # expand payloadTuple into unpHdl and ptdHdl, and interpolation level
-    unpHdl = payloadTuple[0]
-    ptdHdl = payloadTuple[1]
-    intLevLow = payloadTuple[2]
-    intLevHigh = payloadTuple[3]
+    # expand payloadTuple into xsect lat/lon, unpHdl and ptdHdl, and interpolation level
+    latMin = payloadTuple[0]
+    lonMin = payloadTuple[1] if payloadTuple[1] > 0. else payloadTuple[1] + 360.  # fix longitude convention
+    latMax = payloadTuple[2]
+    lonMax = payloadTuple[3] if payloadTuple[3] > 0. else payloadTuple[3] + 360.  # fix longitude convention
+    unpHdl = payloadTuple[4]
+    ptdHdl = payloadTuple[5]
+    intLevLow = payloadTuple[6]
+    intLevHigh = payloadTuple[7]
     # define intLevs as vector of levels between intLevLow and intLevHigh
     # at intervals intLevInt
     intLevInt = 2500.  # Pa
@@ -123,6 +127,14 @@ def right_panel(ax, payloadTuple):
                                             vectorThinning=None,
                                             vecColor=None,
                                             figax=ax)
+    # restrict plot to subregion around cross-section
+    offsetLat = 0.
+    offsetLon = 0.
+    lat1 = np.max([np.min([latMin, latMax]) - offsetLat, np.min(lat)])
+    lat2 = np.min([np.max([latMin, latMax]) + offsetLat, np.max(lat)])
+    lon1 = np.max([np.min([lonMin, lonMax]) - offsetLon, np.min(lon)])
+    lon2 = np.min([np.max([lonMin, lonMax]) + offsetLon, np.max(lon)])
+    ax.set_extent([lon1, lon2, lat1, lat2],crs=plotProj)
     # add a title
     ax.set_title('')
     return ax
@@ -178,7 +190,7 @@ def generate_cross_PV_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, line
                                  xSectShadInterval=xSectShadInterval,
                                  datProj=datProj,
                                  plotProj=plotProj,
-                                 planSectPlotTuple=(right_panel, (unpHdl, ptdHdl, 70000., 95000.)),
+                                 planSectPlotTuple=(right_panel, (30.0, 189.5, 63.5, 239.0, unpHdl, ptdHdl, 70000., 95000.)),
                                  presLevMin=10000.,
                                  xSectTitleStr=None,
                                  xLineColorList=[lineColor]
@@ -265,6 +277,3 @@ if __name__ == "__main__":
     latBeg, lonBeg = extend_xsect_point(latCen, lonCen, bearing, kmDist)
     latEnd, lonEnd = extend_xsect_point(latCen, lonCen, bearing+180., kmDist)
     generate_cross_PV_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lonEnd, 'black', 'FIGW_panel_D')
-#
-# end
-#
