@@ -41,10 +41,14 @@ from scipy.interpolate import interp1d
 #                                        and perturbation mean wind-speed OR temperature
 def right_panel(ax, payloadTuple):
     # expand payloadTuple into unpHdl and ptdHdl, and interpolation level
-    unpHdl = payloadTuple[0]
-    ptdHdl = payloadTuple[1]
-    intLevLow = payloadTuple[2]
-    intLevHigh = payloadTuple[3]
+    latMin = payloadTuple[0]
+    lonMin = payloadTuple[1] if payloadTuple[1] > 0. else payloadTuple[1] + 360.  # fix longitude convention
+    latMax = payloadTuple[2]
+    lonMax = payloadTuple[3] if payloadTuple[3] > 0. else payloadTuple[3] + 360.  # fix longitude convention
+    unpHdl = payloadTuple[4]
+    ptdHdl = payloadTuple[5]
+    intLevLow = payloadTuple[6]
+    intLevHigh = payloadTuple[7]
     # define intLevs as vector of levels between intLevLow and intLevHigh
     # at intervals intLevInt
     intLevInt = 2500.  # Pa
@@ -158,6 +162,14 @@ def right_panel(ax, payloadTuple):
                                             vecColor=vCol,
                                             vectorScale=vScale,
                                             figax=ax)
+    # restrict plot to subregion around cross-section
+    offsetLat = 0.
+    offsetLon = 0.
+    lat1 = np.max([np.min([latMin, latMax]) - offsetLat, np.min(lat)])
+    lat2 = np.min([np.max([latMin, latMax]) + offsetLat, np.max(lat)])
+    lon1 = np.max([np.min([lonMin, lonMax]) - offsetLon, np.min(lon)])
+    lon2 = np.min([np.max([lonMin, lonMax]) + offsetLon, np.max(lon)])
+    ax.set_extent([lon1, lon2, lat1, lat2],crs=plotProj)
     # add a title
     ax.set_title('')
     return ax
@@ -213,7 +225,7 @@ def generate_cross_temperature_panel(unpHdl, ptdHdl, latBeg, lonBeg, latEnd, lon
                                  xSectShadInterval=xSectShadInterval,
                                  datProj=datProj,
                                  plotProj=plotProj,
-                                 planSectPlotTuple=(right_panel, (unpHdl, ptdHdl, 70000., 95000., "T")),
+                                 planSectPlotTuple=(right_panel, (35.0, 180.0, 60.0, 224.0, unpHdl, ptdHdl, 70000., 95000., "T")),
                                  presLevMin=10000.,
                                  xSectTitleStr=None,
                                  xLineColorList=[lineColor]
@@ -325,6 +337,18 @@ def generate_plan_advection_panel(unpHdl, ptdHdl, figureName):
                                             vecColor=vCol,
                                             vectorScale=vScale,
                                             figax=ax)
+    # restrict plot to subregion around cross-section
+    offsetLat = 0.
+    offsetLon = 0.
+    latMin=35.0
+    lonMin=180.0
+    latMax=60.0
+    lonMax=224.0
+    lat1 = np.max([np.min([latMin, latMax]) - offsetLat, np.min(lat)])
+    lat2 = np.min([np.max([latMin, latMax]) + offsetLat, np.max(lat)])
+    lon1 = np.max([np.min([lonMin, lonMax]) - offsetLon, np.min(lon)])
+    lon2 = np.min([np.max([lonMin, lonMax]) + offsetLon, np.max(lon)])
+    ax.set_extent([lon1, lon2, lat1, lat2],crs=plotProj)
     # add a title
     ax.set_title('')
     fig.savefig(figureName + '.png', bbox_inches='tight', facecolor='white')
